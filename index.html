@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="OptiBot – der intelligente 3D-Desktop-Begleiter für Windows, der dein System automatisch optimiert.">
+    <title>OptiBot &mdash; Dein intelligenter Desktop-Begleiter</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="webgl-container"></div>
+
+    <nav>
+        <a href="#" class="brand">
+            <img src="logo.png" alt="OptiBot Logo">
+            <span>OptiBot</span>
+        </a>
+        <div class="nav-links">
+            <a href="anleitung.html" class="btn-ghost">Anleitung</a>
+            <a href="#download" class="btn-nav">Download</a>
+        </div>
+    </nav>
+
+    <main>
+        <section class="hero slide-up">
+            <h1>OptiBot.</h1>
+            <h2>Dein intelligenter Desktop-Begleiter.</h2>
+            <p>Erlebe einen kleinen Roboter, der direkt auf deinem Desktop lebt, atmet und mit deinem System interagiert.</p>
+            <div class="hero-meta">Für Windows 10 &amp; 11 &middot; Kostenlos</div>
+        </section>
+
+        <section class="feature feature-right slide-up">
+            <div class="content">
+                <h3>Smart Engine.</h3>
+                <p>OptiBot reagiert in Echtzeit auf deinen PC. Arbeitest du hart, passt er sich an. Startest du ein Spiel, aktiviert er den Play-Modus. Immer an deiner Seite.</p>
+            </div>
+            <div class="image-container">
+                <img src="render1.png" alt="OptiBot Smart Engine" loading="lazy">
+            </div>
+        </section>
+
+        <section class="feature feature-left slide-up">
+            <div class="image-container">
+                <img src="render2.png" alt="OptiBot Studio – dein Bot, dein Stil" loading="lazy">
+            </div>
+            <div class="content">
+                <h3>Dein Bot, dein Stil.</h3>
+                <p>Nutze das integrierte OptiBot Studio. Tausche Materialien aus, lackiere Körperteile um, oder verpasse ihm coole Accessoires wie eine VR-Brille oder Katzenohren. Bis zu fünf individuelle Bots gleichzeitig.</p>
+            </div>
+        </section>
+
+        <section class="feature feature-center slide-up">
+            <div class="image-container hero-render">
+                <img src="render3.png" alt="OptiBot – federleicht" loading="lazy">
+            </div>
+            <div class="content">
+                <h3>Federleicht.</h3>
+                <p>Entwickelt in purem C# und optimiertem WebGL. Er nutzt kaum Ressourcen und legt sich schlafen, wenn du ihn nicht brauchst.</p>
+            </div>
+        </section>
+
+        <section id="download" class="download-section slide-up">
+            <h1>Bereit für deinen neuen Begleiter?</h1>
+            <p>Lade OptiBot kostenlos für Windows 10 &amp; 11 herunter.</p>
+            <a href="OptiBot_Setup.exe" class="btn-large" download>OptiBot herunterladen</a>
+            <div class="download-meta">Version 1.0 &middot; ca. 38&nbsp;MB &middot; Windows 10/11 (64&#8209;bit)</div>
+            <a href="anleitung.html" class="link-subtle">Zur Anleitung &rarr;</a>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 OptiBot &middot; <a href="anleitung.html">Anleitung</a></p>
+    </footer>
+
+    <!-- Three.js Dependencies -->
+    <script src="threejs/three.min.js"></script>
+    <script src="threejs/fflate.min.js"></script>
+    <script src="threejs/FBXLoader.js"></script>
+    <script src="threejs/RoomEnvironment.js"></script>
+    <script src="threejs/controls/OrbitControls.js"></script>
+    <script src="threejs/shaders/CopyShader.js"></script>
+    <script src="threejs/shaders/LuminosityHighPassShader.js"></script>
+    <script src="threejs/postprocessing/Pass.js"></script>
+    <script src="threejs/postprocessing/MaskPass.js"></script>
+    <script src="threejs/postprocessing/RenderPass.js"></script>
+    <script src="threejs/postprocessing/ShaderPass.js"></script>
+    <script src="threejs/postprocessing/UnrealBloomPass.js"></script>
+    <script src="threejs/postprocessing/EffectComposer.js"></script>
+
+    <script src="script.js"></script>
+</body>
+</html>

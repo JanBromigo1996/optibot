@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="OptiBot Anleitung – Installation, Smart Engine, Studio und Multi-Bot-Setup erklärt.">
+    <title>OptiBot &mdash; Anleitung</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Doc-specific layout on top of the site's base styles */
+        .doc-header {
+            position: relative;
+            height: min(46vh, 420px);
+            min-height: 260px;
+            overflow: hidden;
+            display: flex;
+            align-items: flex-end;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .doc-header img {
+            position: absolute; inset: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            object-position: center;
+        }
+        .doc-header .overlay {
+            position: absolute; inset: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.35) 100%);
+        }
+        .doc-header .title {
+            position: relative;
+            z-index: 2;
+            padding: 0 6% 44px;
+        }
+        .doc-header h1 { font-size: clamp(38px, 6vw, 64px); font-weight: 800; letter-spacing: -1.5px; }
+        .doc-header p { font-size: clamp(16px, 2vw, 20px); color: rgba(255,255,255,0.65); margin-top: 8px; }
+
+        .doc {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 60px 6% 100px;
+        }
+        .doc section {
+            min-height: unset;
+            padding: 0;
+            margin-bottom: 26px;
+            /* The site's base stylesheet hides sections (opacity 0) until the
+               scroll-observer in script.js reveals them — this page doesn't
+               load that script, so undo it here or the cards never appear. */
+            opacity: 1;
+            transform: none;
+        }
+        .doc-card {
+            background: rgba(255,255,255,0.035);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 20px;
+            padding: 34px 38px;
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
+        .doc-card h2 {
+            font-size: clamp(24px, 3vw, 32px);
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .doc-card h2 .n {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px; height: 34px;
+            border-radius: 10px;
+            background: rgba(10,132,255,0.18);
+            color: #6ea8ff;
+            font-size: 17px;
+            font-weight: 700;
+            flex: none;
+        }
+        .doc-card p, .doc-card li {
+            font-size: 16px;
+            line-height: 1.65;
+            color: #b8b8bd;
+        }
+        .doc-card p + p { margin-top: 12px; }
+        .doc-card ul { margin: 12px 0 0 0; padding-left: 0; list-style: none; }
+        .doc-card li {
+            padding: 9px 0 9px 30px;
+            position: relative;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .doc-card li:last-child { border-bottom: none; }
+        .doc-card li::before {
+            content: '';
+            position: absolute;
+            left: 6px; top: 17px;
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: #0A84FF;
+        }
+        .doc-card b { color: #f5f5f7; font-weight: 600; }
+        .kbd {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            font-size: 13.5px;
+            color: #e5e5ea;
+            white-space: nowrap;
+        }
+        .tip {
+            margin-top: 16px;
+            padding: 14px 18px;
+            border-radius: 12px;
+            background: rgba(10,132,255,0.08);
+            border: 1px solid rgba(10,132,255,0.25);
+            font-size: 15px;
+            color: #b9d4ff;
+        }
+        .back-row { text-align: center; margin-top: 46px; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="index.html" class="brand">
+            <img src="logo.png" alt="OptiBot Logo">
+            <span>OptiBot</span>
+        </a>
+        <div class="nav-links">
+            <a href="index.html#download" class="btn-nav">Download</a>
+        </div>
+    </nav>
+
+    <header class="doc-header">
+        <img src="tutorial_header.png" alt="OptiBot">
+        <div class="overlay"></div>
+        <div class="title">
+            <h1>Anleitung</h1>
+            <p>Alles, was du über deinen neuen Desktop-Begleiter wissen musst.</p>
+        </div>
+    </header>
+
+    <main class="doc">
+        <section class="doc-card">
+            <h2><span class="n">1</span>Installation</h2>
+            <p>Lade <b>OptiBot_Setup.exe</b> herunter und starte sie. Der Setup-Assistent führt dich durch die Installation — du kannst dabei Verknüpfungen anlegen und den <b>Autostart</b> aktivieren, damit OptiBot direkt mit Windows startet.</p>
+            <ul>
+                <li>OptiBot wird nach <b>%LocalAppData%\Programs\OptiBot</b> installiert — es werden keine Systemordner verändert.</li>
+                <li>Windows fragt beim Start von OptiBot nach <b>Administrator-Rechten</b>. Das ist notwendig, damit OptiBot deinen Arbeitsspeicher wirklich freiräumen und Energieprofile umschalten darf.</li>
+                <li>Falls der <b>SmartScreen-Filter</b> beim ersten Start warnt: „Weitere Informationen" → „Trotzdem ausführen". Die Warnung erscheint bei neuen, noch unbekannten Programmen.</li>
+            </ul>
+        </section>
+
+        <section class="doc-card">
+            <h2><span class="n">2</span>Erste Schritte</h2>
+            <p>Nach dem Start erscheint OptiBot auf deinem Desktop und ein Icon im <b>Infobereich der Taskleiste</b> (neben der Uhr).</p>
+            <ul>
+                <li><b>Bewegen:</b> Halte den Bot einfach gedrückt und ziehe ihn dorthin, wo er wohnen soll. Er merkt sich seine Position.</li>
+                <li><b>Streicheln:</b> Ein kurzer Klick — er freut sich mit Herzchen-Augen.</li>
+                <li><b>Schnell-Optimierung:</b> Ein <b>Doppelklick</b> räumt sofort deinen RAM auf. Der Bot zeigt dabei auf seinem Display, was er gerade tut, und feiert danach mit einem Freudentanz.</li>
+                <li><b>Display wechseln:</b> Mit dem <span class="kbd">Mausrad</span> über dem Bot blätterst du zwischen Gesicht, CPU-, RAM- und GPU-Anzeige.</li>
+                <li><b>Verstecken/Zeigen:</b> Ein Klick auf das Taskleisten-Icon blendet den Bot aus oder ein — die Optimierung läuft im Hintergrund weiter.</li>
+            </ul>
+        </section>
+
+        <section class="doc-card">
+            <h2><span class="n">3</span>Die Smart Engine</h2>
+            <p>OptiBot beobachtet, welche Programme laufen, und schaltet dein System automatisch in den passenden Modus:</p>
+            <ul>
+                <li><b>Play-Modus</b> (magenta): Ein Spiel wurde erkannt. Maximale Leistung, RAM wird freigeräumt, störende Hintergrunddienste pausieren.</li>
+                <li><b>Work-Modus</b> (bernstein): Kreativ- oder Arbeits-Software läuft (z.&nbsp;B. Blender, Adobe, Visual Studio). Volle Leistung für deine Arbeit, Gaming-Launcher werden geschlossen.</li>
+                <li><b>Auto-Modus</b> (cyan): Alltag. Ausbalanciertes Energieprofil, alle Dienste normal.</li>
+            </ul>
+            <p>Während einer Optimierung läuft auf dem Gesichtsdisplay des zuständigen Bots ein Status-Text mit, und die Augenfarbe zeigt jederzeit den aktiven Modus.</p>
+            <div class="tip">💡 Die Smart Engine kannst du im Taskleisten-Menü unter „Automatische Optimierung" jederzeit an- oder abschalten. Über das Menü kannst du jeden Modus auch manuell setzen.</div>
+        </section>
+
+        <section class="doc-card">
+            <h2><span class="n">4</span>OptiBot Studio</h2>
+            <p>Das Studio ist deine Tuning-Werkstatt. Öffne es per <b>Doppelklick auf das Taskleisten-Icon</b> oder über das Menü („OptiBot Studio öffnen").</p>
+            <ul>
+                <li><b>Teile lackieren:</b> Klicke ein Körperteil direkt am 3D-Modell an (oder wähle es im Panel) und such dir eine Farbe aus — Änderungen erscheinen sofort auf dem echten Bot.</li>
+                <li><b>Accessoires:</b> Ziehe Hexenhut, Antenne, Ohren, VR-Brille oder ein anderes Rad einfach per Drag &amp; Drop auf den Bot.</li>
+                <li><b>Materialien:</b> Von Chrome über Carbon bis Gloss — echte Oberflächen-Presets mit realistischen Reflexionen.</li>
+                <li><b>Umgebungslicht:</b> Sunset, Night, Neon, Cinematic oder Studio — bestimmt, wie sich Licht auf dem Bot spiegelt.</li>
+            </ul>
+        </section>
+
+        <section class="doc-card">
+            <h2><span class="n">5</span>Mehrere Bots</h2>
+            <p>Du kannst bis zu <b>fünf Bots gleichzeitig</b> auf dem Desktop haben — jeder mit eigenem Look und eigener Aufgabe.</p>
+            <ul>
+                <li>Im Studio wählst du oben über die <b>Bot-Tabs</b> aus, welchen Bot du gerade bearbeitest.</li>
+                <li>Mit <span class="kbd">+ Bot</span> / <span class="kbd">− Bot</span> (im Studio oder Taskleisten-Menü) spawnst und entfernst du Bots.</li>
+                <li>Jeder Bot hat eine <b>Rolle</b> (Auto, Work oder Play): Er reagiert sichtbar, wenn die Smart Engine „seinen" Modus aktiviert — so siehst du auf einen Blick, was dein System gerade macht.</li>
+            </ul>
+        </section>
+
+        <section class="doc-card">
+            <h2><span class="n">6</span>Häufige Fragen</h2>
+            <ul>
+                <li><b>Verbraucht OptiBot viel Leistung?</b> Nein. Die 3D-Anzeige ist stark optimiert, und sobald du den Bot ausblendest, drosselt er sich auf nahezu null.</li>
+                <li><b>Warum braucht OptiBot Admin-Rechte?</b> RAM-Bereinigung und das Umschalten von Windows-Energieplänen sind Systemfunktionen — ohne Administratorrechte darf kein Programm sie ausführen.</li>
+                <li><b>Wo liegen meine Einstellungen?</b> Direkt im Installationsordner (Settings.txt, Profiles.txt, BotSlots.txt) — beim Deinstallieren einfach den Ordner löschen, fertig.</li>
+                <li><b>Wie deinstalliere ich OptiBot?</b> App über das Taskleisten-Menü beenden, dann den Ordner <b>%LocalAppData%\Programs\OptiBot</b> und die Verknüpfungen löschen. OptiBot hinterlässt sonst nichts auf deinem System.</li>
+            </ul>
+        </section>
+
+        <div class="back-row">
+            <a href="index.html" class="btn-large">Zurück zur Startseite</a>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 OptiBot &middot; <a href="index.html">Startseite</a></p>
+    </footer>
+</body>
+</html>
