@@ -11,7 +11,7 @@ document.querySelectorAll('.slide-up').forEach(el => observer.observe(el));
 
 // Three.js Setup
 let scene, camera, renderer, composer, bloomPass, robot, mixer;
-let bodyBaseMat, bodyBlueMat, bodySidesMat;
+let bodyBaseMat, bodyBlueMat, bodySidesMat, accentLight;
 const clock = new THREE.Clock();
 
 // Scroll state must live at module scope: animate() reads it every frame —
@@ -88,14 +88,18 @@ const KEYFRAMES = RAW_KEYFRAMES.map(k => ({
 // verschiedenen Kombinationen". Headwear (hat/antenna) stays mutually
 // exclusive and exactly one wheel is ever equipped, matching the real
 // Studio's own equip-slot rules.
+// Bumped from the previous muted set (desaturated navy/olive/slate) to
+// fully saturated, near-neon accents — the bloom pass barely had anything
+// to grab onto before, so the "color change" demo read as subtle instead
+// of showing off. Every look below now has one properly punchy hue.
 const STYLE_LOOKS = [
-    { body: 0xffffff, blue: 0x2a4fd6, ears: false, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Standard' },
-    { body: 0xe8452c, blue: 0x1c1c1e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
-    { body: 0x2a4fd6, blue: 0xffffff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' },
-    { body: 0xf5f5f7, blue: 0x7ddfc3, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
-    { body: 0x1c1c1e, blue: 0xae8f2a, ears: false, glasses: false, hat: true, antenna: false, wheel1: true, material: 'Matte' },
-    { body: 0x9aa0a6, blue: 0x2c2c2e, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
-    { body: 0xffffff, blue: 0x7ddfc3, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
+    { body: 0xffffff, blue: 0x0057ff, ears: false, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Standard' },
+    { body: 0xff2d1e, blue: 0x161616, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
+    { body: 0x0046ff, blue: 0xffffff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' },
+    { body: 0xf5f5f7, blue: 0x00e5a8, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
+    { body: 0x1c1c1e, blue: 0xffb800, ears: false, glasses: false, hat: true, antenna: false, wheel1: true, material: 'Matte' },
+    { body: 0x9aa0a6, blue: 0x00d4ff, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
+    { body: 0xffffff, blue: 0xff2e8a, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
 ];
 let styleLookIndex = 0;
 let styleLookTimer = 0;
@@ -197,12 +201,33 @@ function setMaterialInstant(mats, presetName) {
 // bot to bot. Main bot (center, index 2 of 5 visually) keeps the plain
 // default look; these four fill out the rest with real variety.
 const EXTRA_BOT_LOOKS = [
-    { body: 0xffffff, blue: 0x19f2ff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' }, // Auto — cyan, glasses, chrome
-    { body: 0x1c1c1e, blue: 0xffb84d, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Matte' }, // Work — amber, ears, matte
-    { body: 0x2a1030, blue: 0xff2e8a, ears: false, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Gloss' }, // Play — magenta, antenna, sport wheel, gloss
-    { body: 0xf5f5f7, blue: 0x7ddfc3, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' }, // mint, ears+glasses, sport wheel, satin
+    { body: 0xffffff, blue: 0x00e5ff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' }, // Auto — electric cyan, glasses, chrome
+    { body: 0x1c1c1e, blue: 0xffa000, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Matte' }, // Work — vivid amber, ears, matte
+    { body: 0x2a1030, blue: 0xff0080, ears: false, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Gloss' }, // Play — hot magenta, antenna, sport wheel, gloss
+    { body: 0xf5f5f7, blue: 0x00e5a8, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' }, // vivid mint, ears+glasses, sport wheel, satin
+];
+// A short alternate look each extra bot occasionally swaps to on its own
+// clock (see updateExtraBots) so the lineup doesn't sit static — each bot
+// picks its own moment independent of the others and of the main bot's
+// customization cycle, which is the "individual" animation being asked for.
+const EXTRA_BOT_ALT_LOOKS = [
+    { body: 0xffffff, blue: 0xff2d1e, ears: true, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
+    { body: 0x1c1c1e, blue: 0x00d4ff, ears: false, glasses: false, hat: false, antenna: true, wheel1: false, material: 'Chrome' },
+    { body: 0x2a1030, blue: 0xffb800, ears: false, glasses: true, hat: false, antenna: true, wheel1: true, material: 'Satin' },
+    { body: 0xf5f5f7, blue: 0x0057ff, ears: false, glasses: false, hat: false, antenna: false, wheel1: true, material: 'Matte' },
 ];
 let extraBots = [];
+// Per-bot bob/turn frequency+amplitude multipliers — previously every bot
+// ran the exact same sine formula and only differed by phase, so five bots
+// side by side still visibly breathed "in sync" once you looked for it.
+// Distinct per-bot speeds/amplitudes make each one read as having its own
+// small personality instead of one animation copy-pasted four times.
+const EXTRA_BOT_MOTION = [
+    { bobFreq: 0.0018, bobAmp: 4, turnFreq: 0.0009, turnAmp: 0.15, swapEvery: 5.5 },
+    { bobFreq: 0.0026, bobAmp: 3, turnFreq: 0.0013, turnAmp: 0.22, swapEvery: 7.0 },
+    { bobFreq: 0.0014, bobAmp: 6, turnFreq: 0.0007, turnAmp: 0.11, swapEvery: 6.2 },
+    { bobFreq: 0.0021, bobAmp: 4.5, turnFreq: 0.0016, turnAmp: 0.18, swapEvery: 8.4 },
+];
 function createExtraBots() {
     EXTRA_BOT_LOOKS.forEach((look, i) => {
         const clone = robot.clone(true);
@@ -221,6 +246,11 @@ function createExtraBots() {
         clone.userData.phase = i * 1.7 + 0.6; // desyncs the idle bob per bot
         clone.userData.scaleVal = 0;
         clone.userData.scaleVel = 0;
+        clone.userData.mats = mats;
+        clone.userData.lookIndex = 0;
+        clone.userData.swapTimer = i * 1.4; // staggers each bot's first swap too
+        clone.userData.popScale = 1;
+        clone.userData.popScaleVel = 0;
         clone.visible = false;
         scene.add(clone);
         extraBots.push(clone);
@@ -231,6 +261,7 @@ function updateExtraBots(dt, active, centerX, centerY) {
     // Fan positions either side of the main (center) bot — main bot takes
     // the middle slot, clones take the two on each side.
     const OFFSETS = [-260, -130, 130, 260];
+    const now = Date.now();
     extraBots.forEach((bot, i) => {
         const target = active ? 1 : 0;
         bot.userData.scaleVel += (220 * (target - bot.userData.scaleVal) - 14 * bot.userData.scaleVel) * dt;
@@ -238,10 +269,34 @@ function updateExtraBots(dt, active, centerX, centerY) {
         const s = Math.max(0, bot.userData.scaleVal);
         if (s < 0.01 && !active) { bot.visible = false; return; }
         bot.visible = true;
-        bot.scale.setScalar(baseRobotScale * s);
+
+        // Each bot swaps between its primary and alt look on its own clock
+        // (independent frequency, independent phase) with the same squash
+        // pop the main bot uses when the user changes its outfit — this is
+        // what makes the lineup feel like five individually-animated bots
+        // rather than one look cloned four times.
+        const motion = EXTRA_BOT_MOTION[i];
+        if (active) {
+            bot.userData.swapTimer += dt;
+            if (bot.userData.swapTimer > motion.swapEvery) {
+                bot.userData.swapTimer = 0;
+                bot.userData.lookIndex = 1 - bot.userData.lookIndex;
+                const look = bot.userData.lookIndex === 0 ? EXTRA_BOT_LOOKS[i] : EXTRA_BOT_ALT_LOOKS[i];
+                const mats = bot.userData.mats;
+                if (mats.base) mats.base.color.setHex(look.body);
+                if (mats.blue) mats.blue.color.setHex(look.blue);
+                setMaterialInstant(mats, look.material);
+                applyAccessoryLook(look, bot);
+                bot.userData.popScaleVel -= 3.4;
+            }
+        }
+        bot.userData.popScaleVel += (260 * (1 - bot.userData.popScale) - 15 * bot.userData.popScaleVel) * dt;
+        bot.userData.popScale += bot.userData.popScaleVel * dt;
+
+        bot.scale.setScalar(baseRobotScale * s * bot.userData.popScale);
         bot.position.x = centerX + OFFSETS[i] * Math.min(1, s);
-        bot.position.y = centerY + Math.sin(Date.now() * 0.0018 + bot.userData.phase) * 4;
-        bot.rotation.y = Math.sin(Date.now() * 0.0009 + bot.userData.phase) * 0.15;
+        bot.position.y = centerY + Math.sin(now * motion.bobFreq + bot.userData.phase) * motion.bobAmp;
+        bot.rotation.y = Math.sin(now * motion.turnFreq + bot.userData.phase) * motion.turnAmp;
     });
 }
 
@@ -391,17 +446,23 @@ function init() {
     // near-white as everything else, so the silhouette barely separates
     // from the pure-black backdrop — classic "product on black" photography
     // fixes this with an edge/rim light, not just less front light.
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    // Cinematic pass: a "product photo on black" look needs real contrast
+    // between a tight, slightly warm key and a near-absent ambient — flat
+    // even lighting is what reads as "cheap render" no matter how bright.
+    // Key intensity goes up but ambient goes DOWN at the same time, so the
+    // lit face of the bot gets punchier highlights while the shadow side
+    // stays genuinely dark instead of just uniformly dimmer.
+    const dirLight = new THREE.DirectionalLight(0xfff4e0, 0.95);
     dirLight.position.set(100, 200, 50);
     scene.add(dirLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.14);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.07);
     scene.add(ambientLight);
 
     // Rim/kicker light from behind-and-above: puts a bright edge along the
     // top/back of the head so the bot's outline reads clearly against black
     // even where the front key light doesn't reach.
-    const rimLight = new THREE.DirectionalLight(0x8fd6ff, 1.35);
+    const rimLight = new THREE.DirectionalLight(0x8fd6ff, 1.7);
     rimLight.position.set(-120, 160, -180);
     scene.add(rimLight);
 
@@ -412,12 +473,22 @@ function init() {
     wheelFill.position.set(40, -30, 160);
     scene.add(wheelFill);
 
-    renderer.toneMappingExposure = 0.85;
+    // Dynamic accent light: color-matched to whatever the live customization
+    // accent color currently is (see targetColor.blue in animate()), so the
+    // "punchier colors" and "cinematic lighting" asks reinforce each other —
+    // the bloom pass picks up this light's color as a soft colored glow that
+    // shifts with every outfit change instead of lighting staying neutral
+    // while only the material color changes.
+    accentLight = new THREE.PointLight(0x2a4fd6, 1.6, 420, 2);
+    accentLight.position.set(-60, 40, 200);
+    scene.add(accentLight);
+
+    renderer.toneMappingExposure = 0.92;
 
     // Composer
     composer = new THREE.EffectComposer(renderer);
     composer.addPass(new THREE.RenderPass(scene, camera));
-    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.32, 0.4, 0.82);
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.42, 0.45, 0.78);
     composer.addPass(bloomPass);
 
     // Real PBR maps, same set the app itself uses (FBX-embedded texture refs
@@ -596,8 +667,21 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 // collide with stacked text on a narrow screen. Below that width, every
 // section instead reuses the "lightweight" treatment (small, high, out of
 // the way) that already reads cleanly against centered text.
-const MOBILE_KEYFRAME = { camPos: [0, 240, 980], camLook: [0, 200, 0], robotX: 0, robotY: -30, rotY: 0.1 };
-function isMobileView() { return window.innerWidth < 900; }
+// Pulled back and pushed down from an earlier version that had the bot's
+// head overlapping the "Für Windows 10 & 11 · Kostenlos" badge on real
+// phone-sized viewports — confirmed via direct NDC head-top projection
+// against the badge's own screen rect (badge bottom ~579px vs head-top
+// ~603px at the old values, i.e. actually already touching once real text
+// line heights are accounted for). Re-tuned so head-top lands ~635px,
+// a real ~56px clear gap under the badge at a 390x844 viewport.
+const MOBILE_KEYFRAME = { camPos: [0, 240, 1500], camLook: [0, 260, 0], robotX: 0, robotY: -190, rotY: 0.1 };
+// Short desktop windows (e.g. a 1440x700 browser) hit the same text-overlap
+// problem as phones — the hero copy's vertical position is set by CSS
+// padding, not by viewport height, so a shorter window just brings the
+// same fixed-world-position bot closer to the text underneath it. Reusing
+// the phone treatment (smaller, further down) below a height threshold
+// fixes both cases with one keyframe instead of tuning two.
+function isMobileView() { return window.innerWidth < 900 || window.innerHeight < 760; }
 
 function animate() {
     requestAnimationFrame(animate);
@@ -629,9 +713,15 @@ function animate() {
     const targetRobotY = lerp(k0.robotY, k1.robotY, t);
     const targetRotY = lerp(k0.rotY, k1.rotY, t);
 
-    // Ease everything toward its target — the actual "cinematic scroll"
-    // feel comes from this damping, not from the raw scroll value itself.
-    const ease = 1 - Math.pow(0.001, delta); // frame-rate-independent damping
+    // Ease everything toward its target. This used to converge with a ~0.145s
+    // time constant (fine for a *static* target), but the target here moves
+    // continuously while scrolling — at any real scroll speed the steady-
+    // state lag (≈ targetSpeed × timeConstant) was large enough that the bot
+    // visibly never caught up before the user had already scrolled past a
+    // section, reported as "too slow, you miss it." Tightened to a ~0.045s
+    // time constant: still smooths out raw per-frame scroll jitter, but
+    // tracks fast scrolling closely enough to actually arrive.
+    const ease = 1 - Math.pow(0.000000001, delta); // frame-rate-independent damping
     curCam.pos.x = lerp(curCam.pos.x, targetCamPos[0], ease);
     curCam.pos.y = lerp(curCam.pos.y, targetCamPos[1], ease);
     curCam.pos.z = lerp(curCam.pos.z, targetCamPos[2], ease);
@@ -736,6 +826,8 @@ function animate() {
 
         updateExtraBots(delta, multiActive, curRobotX, robot.position.y);
     }
+
+    if (accentLight) accentLight.color.lerp(targetColor.blue, 0.04);
 
     updateFace(performance.now(), delta, statsActive);
     composer.render();
