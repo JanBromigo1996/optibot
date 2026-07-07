@@ -730,6 +730,14 @@ function init() {
     const loader = new THREE.FBXLoader();
     loader.load('wheelbot.fbx', function (object) {
         robot = object;
+        robot.traverse(function (child) {
+            if (child.isMesh && child.material && child.name.includes('Screen')) {
+                child.material.map = mainFaceController.faceTex;
+                child.material.emissiveMap = mainFaceController.faceTex;
+                child.material.emissive = new THREE.Color(0xffffff);
+                child.material.emissiveIntensity = 1.0;
+            }
+        });
 
         robot.traverse(function (child) {
             if (!child.isMesh || !child.material) return;
