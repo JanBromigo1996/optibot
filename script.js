@@ -28,7 +28,7 @@ let scrollFrac = 0; // damped, eased 0..1 position through the page
 // (see .visual-spacer in style.css, which reserves the space but draws
 // nothing itself — no boxes, no borders, no visible frame anywhere).
 // ------------------------------------------------------------------
-const SECTION_IDS = ['section-hero', 'section-smart', 'section-style', 'section-light', 'download'];
+const SECTION_IDS = ['section-hero', 'section-smart', 'section-style', 'section-multi', 'section-stats', 'section-light', 'download'];
 const KEYFRAMES = [
     // hero — centered, raised so he reads as present/alive right under the
     // headline rather than sunk near the bottom of the viewport
@@ -37,6 +37,13 @@ const KEYFRAMES = [
     { camPos: [10, 55, 380], camLook: [0, 48, 0], robotX: 92, robotY: -90, rotY: 0.55 },
     // customization — text on the right, bot drifts into the left half
     { camPos: [-10, 55, 380], camLook: [0, 48, 0], robotX: -92, robotY: -90, rotY: -0.55 },
+    // multi-bot lineup — pulled back and centered so all five fit in frame;
+    // the main bot becomes the middle of the lineup, four clones fan out
+    // either side of it (see updateExtraBots)
+    { camPos: [0, 40, 850], camLook: [0, 0, 0], robotX: 0, robotY: -210, rotY: 0 },
+    // stats display — text on the left, bot (showing the display, not eyes)
+    // drifts into the right half, framed a bit closer so the display reads
+    { camPos: [-10, 50, 300], camLook: [0, 58, 0], robotX: 85, robotY: -55, rotY: 0.3 },
     // lightweight — this section's text is centered (no side spacer to slot
     // into), so instead of competing for the same middle of the frame the
     // bot pulls back, rises, and shrinks toward the top — a small, distant
@@ -70,14 +77,101 @@ let styleLookTimer = 0;
 const STYLE_LOOK_HOLD = 2.2; // seconds per look
 const targetColor = { body: new THREE.Color(0xffffff), blue: new THREE.Color(0x2a4fd6) };
 
-function applyAccessoryLook(look) {
-    robot.traverse(c => {
+function applyAccessoryLook(look, target) {
+    (target || robot).traverse(c => {
         if (c.name === 'Acessory_Ear_1_Left' || c.name === 'Acessory_Ear_1_Right') c.visible = look.ears;
         if (c.name === 'Acessory_VR_Glasses') c.visible = look.glasses;
         if (c.name === 'Acessory_Witchhat') c.visible = look.hat;
         if (c.name === 'Acessory_Antenna') c.visible = look.antenna;
         if (c.name === 'Acessory_Wheel_1' || c.name === 'Acessory_Wheel_1_Wheel') c.visible = look.wheel1;
         if (c.name === 'Acessory_Wheel_standard') c.visible = !look.wheel1;
+    });
+}
+
+// A Disney/Pixar-style "pop" — a quick squash-then-overshoot on the whole
+// body plus a small rotational kick — fired every time an accessory/look
+// actually changes, so swapping outfits reads as a lively little reaction
+// instead of a flat instant swap. Same damped-spring idiom used throughout
+// the sister desktop-app project (vel += (k*(target-cur) - d*vel)*dt).
+let baseRobotScale = 1;
+let popScale = 1, popScaleVel = 0;
+let popKick = 0, popKickVel = 0;
+function triggerAccessoryPop() {
+    popScaleVel -= 3.4;
+    popKickVel += (Math.random() - 0.5) * 2.2;
+}
+function updateAccessoryPop(dt) {
+    popScaleVel += (260 * (1 - popScale) - 15 * popScaleVel) * dt;
+    popScale += popScaleVel * dt;
+    popKickVel += (120 * (0 - popKick) - 9 * popKickVel) * dt;
+    popKick += popKickVel * dt;
+}
+
+// Find a clone/instance's own base/blue body materials by name — the
+// original FBX-derived material names are lost once we replace them with
+// fresh MeshPhysicalMaterial instances, so those replacements explicitly
+// set .name (see the 'body_base'/'body_blue' tags below) specifically so
+// clones stay independently identifiable and tintable after robot.clone().
+function getBodyMats(obj) {
+    let base = null, blue = null;
+    obj.traverse(c => {
+        if (!c.isMesh || !c.material) return;
+        if (c.material.name === 'body_base') base = c.material;
+        if (c.material.name === 'body_blue') blue = c.material;
+    });
+    return { base, blue };
+}
+
+// ------------------------------------------------------------------
+// Up to 5 bots at once: four extra clones (independent materials, own
+// color) that fan out into a lineup only while the "Bis zu fünf auf
+// einmal" section is in view. Each gets its own idle-motion phase offset
+// so five bots don't breathe/bob in obvious lockstep.
+// ------------------------------------------------------------------
+const EXTRA_BOT_LOOKS = [
+    { body: 0xffffff, blue: 0x19f2ff }, // Auto — cyan
+    { body: 0xffffff, blue: 0xffb84d }, // Work — amber
+    { body: 0x1c1c1e, blue: 0xff2e8a }, // Play — magenta
+    { body: 0xf5f5f7, blue: 0x7ddfc3 }, // a fifth, mint look
+];
+let extraBots = [];
+function createExtraBots() {
+    EXTRA_BOT_LOOKS.forEach((look, i) => {
+        const clone = robot.clone(true);
+        clone.traverse(c => {
+            if (!c.isMesh || !c.material) return;
+            // Some meshes carry a material *array*, not a single material —
+            // .clone() only exists on the individual Material instances.
+            if (Array.isArray(c.material)) c.material = c.material.map(m => m.clone());
+            else c.material = c.material.clone();
+        });
+        const mats = getBodyMats(clone);
+        if (mats.base) mats.base.color.setHex(look.body);
+        if (mats.blue) mats.blue.color.setHex(look.blue);
+        clone.userData.phase = i * 1.7 + 0.6; // desyncs the idle bob per bot
+        clone.userData.scaleVal = 0;
+        clone.userData.scaleVel = 0;
+        clone.visible = false;
+        scene.add(clone);
+        extraBots.push(clone);
+    });
+}
+
+function updateExtraBots(dt, active, centerX, centerY) {
+    // Fan positions either side of the main (center) bot — main bot takes
+    // the middle slot, clones take the two on each side.
+    const OFFSETS = [-260, -130, 130, 260];
+    extraBots.forEach((bot, i) => {
+        const target = active ? 1 : 0;
+        bot.userData.scaleVel += (220 * (target - bot.userData.scaleVal) - 14 * bot.userData.scaleVel) * dt;
+        bot.userData.scaleVal += bot.userData.scaleVel * dt;
+        const s = Math.max(0, bot.userData.scaleVal);
+        if (s < 0.01 && !active) { bot.visible = false; return; }
+        bot.visible = true;
+        bot.scale.setScalar(baseRobotScale * s);
+        bot.position.x = centerX + OFFSETS[i] * Math.min(1, s);
+        bot.position.y = centerY + Math.sin(Date.now() * 0.0018 + bot.userData.phase) * 4;
+        bot.rotation.y = Math.sin(Date.now() * 0.0009 + bot.userData.phase) * 0.15;
     });
 }
 
@@ -119,7 +213,52 @@ function drawFace(lidCoverage, offsetX, offsetY) {
     });
 }
 
-function updateFace(now) {
+// Live-stats demo pages ("Immer im Blick") — the real app swipes between
+// Face/CPU/RAM/GPU pages on the same physical display; this is a simplified
+// version with the same big-bold-number layout, driven by simulated (not
+// real, this is a marketing page, not the app) gently oscillating values.
+const DISPLAY_PAGES = ['face', 'ram', 'cpu', 'gpu'];
+let displayPageIndex = 0, displayPageTimer = 0, pageBlend = 0;
+const DISPLAY_PAGE_HOLD = 1.8;
+
+function drawStatPage(ctx, label, value, color) {
+    ctx.fillStyle = '#04140a';
+    ctx.fillRect(0, 0, 1024, 1024);
+    ctx.textAlign = 'center';
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 44;
+    ctx.fillStyle = color;
+    ctx.font = '800 250px -apple-system, "Segoe UI", sans-serif';
+    ctx.fillText(Math.round(value) + '%', 512, 470);
+    ctx.restore();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.font = '600 46px -apple-system, "Segoe UI", sans-serif';
+    ctx.fillText(label, 512, 555);
+
+    const barW = 660, barH = 26, segs = 22, gap = 6;
+    const bx = 512 - barW / 2, by = 615;
+    const segW = (barW - gap * (segs - 1)) / segs;
+    const filled = Math.round((value / 100) * segs);
+    for (let i = 0; i < segs; i++) {
+        ctx.fillStyle = i < filled ? color : 'rgba(255,255,255,0.1)';
+        ctx.fillRect(bx + i * (segW + gap), by, segW, barH);
+    }
+}
+
+function updateFace(now, dt, statsActive) {
+    if (statsActive) {
+        displayPageTimer += dt;
+        if (displayPageTimer > DISPLAY_PAGE_HOLD) {
+            displayPageTimer = 0;
+            displayPageIndex = (displayPageIndex + 1) % DISPLAY_PAGES.length;
+        }
+    } else if (displayPageIndex !== 0 || displayPageTimer !== 0) {
+        displayPageIndex = 0;
+        displayPageTimer = 0;
+    }
+
     if (now > nextBlinkAt) {
         blinkStart = now;
         nextBlinkAt = now + 2400 + Math.random() * 3200;
@@ -139,7 +278,16 @@ function updateFace(now) {
     gazeX += (gazeTargetX - gazeX) * 0.05;
     gazeY += (gazeTargetY - gazeY) * 0.05;
 
-    drawFace(lidCoverage, gazeX * 34, gazeY * 22);
+    const mode = DISPLAY_PAGES[displayPageIndex];
+    if (mode === 'face') {
+        drawFace(lidCoverage, gazeX * 34, gazeY * 22);
+    } else {
+        const wobble = Math.sin(now * 0.0006 + (mode === 'ram' ? 0 : mode === 'cpu' ? 2.1 : 4.2));
+        const value = Math.max(8, Math.min(96, 52 + wobble * 34));
+        const color = mode === 'ram' ? '#19f2ff' : mode === 'cpu' ? '#ffb84d' : '#ff5ec4';
+        const label = mode === 'ram' ? 'ARBEITSSPEICHER' : mode === 'cpu' ? 'PROZESSOR' : 'GRAFIKKARTE';
+        drawStatPage(faceCtx, label, value, color);
+    }
     faceTex.needsUpdate = true;
 }
 
@@ -224,6 +372,7 @@ function init() {
                         roughness: 1.0, metalness: 1.0, envMapIntensity: 1.35,
                         clearcoat: 0.35, clearcoatRoughness: 0.25
                     });
+                    nm.name = 'body_blue'; // kept identifiable post-clone(); see getBodyMats
                     bodyBlueMat = nm;
                 } else if (name.includes('body_sides')) {
                     nm = new THREE.MeshPhysicalMaterial({
@@ -236,6 +385,7 @@ function init() {
                         roughness: 1.0, metalness: 1.0, envMapIntensity: 1.35,
                         clearcoat: 0.35, clearcoatRoughness: 0.25
                     });
+                    nm.name = 'body_base'; // kept identifiable post-clone(); see getBodyMats
                     bodyBaseMat = nm;
                 } else {
                     nm = new THREE.MeshPhysicalMaterial({
@@ -265,6 +415,7 @@ function init() {
 
         robot.scale.set(scale, scale, scale);
         robot.position.set(-center.x * scale, KEYFRAMES[0].robotY, -center.z * scale);
+        baseRobotScale = scale;
 
         if (robot.animations && robot.animations.length > 0) {
             mixer = new THREE.AnimationMixer(robot);
@@ -272,6 +423,7 @@ function init() {
         }
 
         scene.add(robot);
+        createExtraBots();
     });
 
     window.addEventListener('resize', onWindowResize);
@@ -403,19 +555,31 @@ function animate() {
         renderer.domElement.style.opacity = '1';
     }
 
+    // Each section's own span is progress ∈ [N, N+1) — active windows use a
+    // small ±0.15 bleed on each edge for a smooth cross-fade into/out of the
+    // neighboring section, NOT a wide window (an earlier version widened
+    // these to fix a different bug — the style cycle turning off before the
+    // section's own end — but overshot so far that neighboring sections'
+    // windows overlapped by more than half, which is why the stats display
+    // was showing up while still inside the multi-bot section below).
+    const styleActive = progress > 1.85 && progress < 3.15;
+    const multiActive = progress > 2.85 && progress < 4.15;
+    const statsActive = progress > 3.85 && progress < 5.15;
+
     if (robot) {
         robot.position.x = curRobotX;
         robot.position.y = curRobotY + Math.sin(Date.now() * 0.0018) * 4; // idle breathing bob
         robot.rotation.y = curRotY + mouseX * 0.15;
         robot.rotation.x = mouseY * 0.06;
 
+        updateAccessoryPop(delta);
+        robot.scale.setScalar(baseRobotScale * popScale);
+        robot.rotation.z = popKick;
+
         // Live color/accessory cycle while the "Dein Bot, dein Stil" section
-        // is in view. Bug fixed here: the active window used to end at
-        // progress 2.6, but getSectionProgress() keeps counting up to ~3.0
-        // while still inside that same section — so the cycle was silently
-        // turning itself off (and resetting to the default look) for the
-        // last ~40% of the time actually spent scrolled into that section.
-        const styleActive = progress > 1.5 && progress < 3.15;
+        // is in view — a little squash-and-kick "pop" (see triggerAccessoryPop)
+        // fires on every actual change so swapping outfits reads as a lively
+        // reaction (Pixar-style anticipation/overshoot) instead of an instant cut.
         if (styleActive && bodyBaseMat && bodyBlueMat) {
             styleLookTimer += delta;
             if (styleLookTimer > STYLE_LOOK_HOLD) {
@@ -425,6 +589,7 @@ function animate() {
                 targetColor.body.setHex(look.body);
                 targetColor.blue.setHex(look.blue);
                 applyAccessoryLook(look);
+                triggerAccessoryPop();
             }
             bodyBaseMat.color.lerp(targetColor.body, 0.04);
             bodyBlueMat.color.lerp(targetColor.blue, 0.04);
@@ -442,9 +607,11 @@ function animate() {
             bodyBlueMat.color.lerp(targetColor.blue, 0.03);
             applyAccessoryLook(def);
         }
+
+        updateExtraBots(delta, multiActive, curRobotX, robot.position.y);
     }
 
-    updateFace(performance.now());
+    updateFace(performance.now(), delta, statsActive);
     composer.render();
 }
 
