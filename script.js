@@ -1,11 +1,16 @@
 // Intersection Observer for scroll animations
+// threshold 0.2 + a 1s CSS transition meant a section had to be 20% into
+// view AND THEN take another full second to fade in — reported as text
+// feeling like it starts "too late" relative to the camera, which reacts
+// to scroll continuously with no such delay. Fires as soon as a sliver is
+// visible now, paired with a shorter 0.55s transition in style.css.
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
         if (entry.isIntersecting) {
             entry.target.classList.add('visible');
         }
     });
-}, { threshold: 0.2 });
+}, { threshold: 0.01 });
 
 document.querySelectorAll('.slide-up').forEach(el => observer.observe(el));
 
@@ -831,10 +836,18 @@ function animate() {
     const statsActive = progress >= 4 && progress < 5;
 
     if (robot) {
+        // Layered on top of the scripted per-section rotY — a slow side-to-
+        // side "looking around" turn plus a smaller, faster secondary sine
+        // for a bit of restless energy, and a gentle nod. Previously the
+        // only motion between scroll-driven camera cuts was the breathing
+        // bob, so the bot read as static/emotionless while holding a
+        // section — reported feedback ("mehr Emotion und Umschauen").
+        const lookAround = Math.sin(Date.now() * 0.00042) * 0.16 + Math.sin(Date.now() * 0.0011 + 2.1) * 0.06;
+        const nod = Math.sin(Date.now() * 0.00065 + 1.7) * 0.05;
         robot.position.x = curRobotX;
         robot.position.y = curRobotY + Math.sin(Date.now() * 0.0018) * 4; // idle breathing bob
-        robot.rotation.y = curRotY + mouseX * 0.15;
-        robot.rotation.x = mouseY * 0.06;
+        robot.rotation.y = curRotY + mouseX * 0.15 + lookAround;
+        robot.rotation.x = mouseY * 0.06 + nod;
 
         updateAccessoryPop(delta);
         robot.scale.setScalar(baseRobotScale * popScale);
