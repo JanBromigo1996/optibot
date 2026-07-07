@@ -68,18 +68,6 @@
             align-items: center;
             gap: 12px;
         }
-        .doc-card h2 .n {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 34px; height: 34px;
-            border-radius: 10px;
-            background: rgba(10,132,255,0.18);
-            color: #6ea8ff;
-            font-size: 17px;
-            font-weight: 700;
-            flex: none;
-        }
         .doc-card p, .doc-card li {
             font-size: 16px;
             line-height: 1.65;
@@ -144,6 +132,95 @@
             color: #86868b;
             text-align: center;
         }
+
+        /* ---------- "mini experience" pass ---------- */
+        .doc-header .sparkle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            filter: blur(1px);
+            animation: sparkleDrift 7s ease-in-out infinite;
+        }
+        @keyframes sparkleDrift {
+            0%, 100% { transform: translateY(0) scale(1); opacity: 0.55; }
+            50% { transform: translateY(-22px) scale(1.3); opacity: 1; }
+        }
+        .doc-header img {
+            animation: heroBreathe 9s ease-in-out infinite;
+        }
+        @keyframes heroBreathe {
+            0%, 100% { transform: scale(1.0); }
+            50% { transform: scale(1.035); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .doc-header img, .doc-header .sparkle { animation: none; }
+        }
+
+        .doc-card.reveal {
+            opacity: 0;
+            transform: translateY(28px);
+            transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .doc-card.reveal.visible { opacity: 1; transform: translateY(0); }
+
+        .icon-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px; height: 38px;
+            border-radius: 11px;
+            flex: none;
+            background: var(--chip-bg, rgba(10,132,255,0.16));
+            color: var(--chip-fg, #6ea8ff);
+            box-shadow: 0 0 0 1px var(--chip-ring, rgba(10,132,255,0.22)) inset;
+        }
+        .icon-chip svg { width: 19px; height: 19px; }
+        .doc-card:hover .icon-chip { box-shadow: 0 0 0 1px var(--chip-ring, rgba(10,132,255,0.22)) inset, 0 0 22px -4px var(--chip-fg, #6ea8ff); transition: box-shadow 0.4s; }
+
+        .doc-img { transition: transform 0.45s cubic-bezier(0.16,1,0.3,1), box-shadow 0.45s; }
+        .doc-img:hover { transform: translateY(-4px) scale(1.012); box-shadow: 0 18px 40px -14px rgba(0,0,0,0.6); }
+
+        .mode-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 2px 10px 2px 8px;
+            margin: 0 8px 4px 0;
+            border-radius: 20px;
+            font-size: 13.5px;
+            font-weight: 600;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+        .mode-chip .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            box-shadow: 0 0 8px 1px currentColor;
+        }
+        .mode-chip.play { background: rgba(255,46,138,0.12); color: #ff6fb0; }
+        .mode-chip.work { background: rgba(255,168,0,0.12); color: #ffc561; }
+        .mode-chip.auto { background: rgba(25,242,255,0.12); color: #6be3ea; }
+
+        /* Right-edge section wayfinding — an Apple-product-page-style dot
+           rail, hidden on narrow screens where there's no room to spare. */
+        .doc-nav {
+            position: fixed;
+            right: 22px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            z-index: 90;
+        }
+        .doc-nav a {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.18);
+            transition: background 0.3s, transform 0.3s;
+        }
+        .doc-nav a.active { background: #6ea8ff; transform: scale(1.5); }
+        @media (max-width: 1100px) { .doc-nav { display: none; } }
     </style>
 </head>
 <body>
@@ -158,6 +235,10 @@
 
     <header class="doc-header">
         <img src="tutorial_header.png" alt="OptiBot">
+        <div class="sparkle" style="left:12%; top:22%; width:5px; height:5px; background:#6ea8ff; animation-delay:0s;"></div>
+        <div class="sparkle" style="left:22%; top:55%; width:3px; height:3px; background:#ffc561; animation-delay:1.6s;"></div>
+        <div class="sparkle" style="left:82%; top:30%; width:4px; height:4px; background:#ff6fb0; animation-delay:3.1s;"></div>
+        <div class="sparkle" style="left:70%; top:65%; width:3px; height:3px; background:#6be3ea; animation-delay:4.4s;"></div>
         <div class="overlay"></div>
         <div class="title">
             <h1>Anleitung</h1>
@@ -165,9 +246,18 @@
         </div>
     </header>
 
+    <div class="doc-nav" aria-hidden="true">
+        <a href="#s-install" data-target="s-install"></a>
+        <a href="#s-start" data-target="s-start"></a>
+        <a href="#s-engine" data-target="s-engine"></a>
+        <a href="#s-studio" data-target="s-studio"></a>
+        <a href="#s-multi" data-target="s-multi"></a>
+        <a href="#s-faq" data-target="s-faq"></a>
+    </div>
+
     <main class="doc">
-        <section class="doc-card">
-            <h2><span class="n">1</span>Installation</h2>
+        <section class="doc-card reveal" id="s-install">
+            <h2><span class="icon-chip" style="--chip-bg:rgba(10,132,255,0.16); --chip-fg:#6ea8ff; --chip-ring:rgba(10,132,255,0.25)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4V15M12 15L8 11M12 15L16 11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 18H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>Installation</h2>
             <p>Lade <b>OptiBot_Setup.exe</b> herunter und starte sie. Der Setup-Assistent führt dich durch die Installation — du kannst dabei Verknüpfungen anlegen und den <b>Autostart</b> aktivieren, damit OptiBot direkt mit Windows startet.</p>
             <ul>
                 <li>OptiBot wird nach <b>%LocalAppData%\Programs\OptiBot</b> installiert — es werden keine Systemordner verändert.</li>
@@ -176,8 +266,8 @@
             </ul>
         </section>
 
-        <section class="doc-card">
-            <h2><span class="n">2</span>Erste Schritte</h2>
+        <section class="doc-card reveal" id="s-start">
+            <h2><span class="icon-chip" style="--chip-bg:rgba(0,229,168,0.14); --chip-fg:#4de3b8; --chip-ring:rgba(0,229,168,0.22)"><svg viewBox="0 0 24 24" fill="none"><path d="M9 12.5l2 2 4.5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 3.5c-2 1.2-3 2-3.6 3.4M16 3.5c2 1.2 3 2 3.6 3.4M4 12c0 4.4 3.6 8 8 8s8-3.6 8-8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>Erste Schritte</h2>
             <p>Nach dem Start erscheint OptiBot auf deinem Desktop und ein Icon im <b>Infobereich der Taskleiste</b> (neben der Uhr).</p>
             <ul>
                 <li><b>Bewegen:</b> Halte den Bot einfach gedrückt und ziehe ihn dorthin, wo er wohnen soll. Er merkt sich seine Position.</li>
@@ -188,13 +278,13 @@
             </ul>
         </section>
 
-        <section class="doc-card">
-            <h2><span class="n">3</span>Die Smart Engine</h2>
+        <section class="doc-card reveal" id="s-engine">
+            <h2><span class="icon-chip" style="--chip-bg:rgba(255,168,0,0.15); --chip-fg:#ffc561; --chip-ring:rgba(255,168,0,0.24)"><svg viewBox="0 0 24 24" fill="none"><path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>Die Smart Engine</h2>
             <p>OptiBot beobachtet, welche Programme laufen, und schaltet dein System automatisch in den passenden Modus:</p>
             <ul>
-                <li><b>Play-Modus</b> (magenta): Ein Spiel wurde erkannt. Maximale Leistung, RAM wird freigeräumt, störende Hintergrunddienste pausieren.</li>
-                <li><b>Work-Modus</b> (bernstein): Kreativ- oder Arbeits-Software läuft (z.&nbsp;B. Blender, Adobe, Visual Studio). Volle Leistung für deine Arbeit, Spiele im Hintergrund werden gedrosselt &mdash; nicht geschlossen.</li>
-                <li><b>Auto-Modus</b> (cyan): Alltag. Ausbalanciertes Energieprofil, alle Dienste normal.</li>
+                <li><span class="mode-chip play"><span class="dot"></span>Play-Modus</span> Ein Spiel wurde erkannt. Maximale Leistung, RAM wird freigeräumt, störende Hintergrunddienste pausieren.</li>
+                <li><span class="mode-chip work"><span class="dot"></span>Work-Modus</span> Kreativ- oder Arbeits-Software läuft (z.&nbsp;B. Blender, Adobe, Visual Studio). Volle Leistung für deine Arbeit, Spiele im Hintergrund werden gedrosselt &mdash; nicht geschlossen.</li>
+                <li><span class="mode-chip auto"><span class="dot"></span>Auto-Modus</span> Alltag. Ausbalanciertes Energieprofil, alle Dienste normal.</li>
             </ul>
             <p>Während einer Optimierung läuft auf dem Gesichtsdisplay des zuständigen Bots ein Status-Text mit, und die Augenfarbe zeigt jederzeit den aktiven Modus. Es gibt nur eine einzige Erkennung im Hintergrund — alle Bots mit derselben Rolle zeigen deshalb immer denselben Modus, nie widersprüchliche Zustände.</p>
             <p>Alle Optimierungen sind bewusst <b>nicht-invasiv</b>: OptiBot schließt keine offenen Programme und löscht keine Caches, die gerade benutzt werden. Stattdessen wird Speicher aufgeräumt und die Priorität von Hintergrund-Prozessen angepasst — ein spürbarer Boost, ohne Risiko für ungespeicherte Arbeit.</p>
@@ -202,8 +292,8 @@
             <div class="tip">💡 Die Smart Engine kannst du im Taskleisten-Menü unter „Automatische Optimierung" jederzeit an- oder abschalten. Über das Menü kannst du jeden Modus auch manuell setzen.</div>
         </section>
 
-        <section class="doc-card">
-            <h2><span class="n">4</span>OptiBot Studio</h2>
+        <section class="doc-card reveal" id="s-studio">
+            <h2><span class="icon-chip" style="--chip-bg:rgba(176,107,255,0.15); --chip-fg:#c19bff; --chip-ring:rgba(176,107,255,0.25)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 100 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-.9.7-1.5 1.5-1.5H16a4 4 0 004-4c0-4.4-3.6-8-8-8z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="8" cy="10.5" r="1.1" fill="currentColor"/><circle cx="11.5" cy="7.5" r="1.1" fill="currentColor"/><circle cx="15.5" cy="9.5" r="1.1" fill="currentColor"/></svg></span>OptiBot Studio</h2>
             <p>Das Studio ist deine Tuning-Werkstatt. Öffne es per <b>Doppelklick auf das Taskleisten-Icon</b> oder über das Menü („OptiBot Studio öffnen").</p>
             <ul>
                 <li><b>Kategorie-Leiste:</b> Die drei Symbole links am Panel wechseln zwischen Bot &amp; Engine, Farbe &amp; Material und Accessoires — wie bei einem echten Charakter-Editor.</li>
@@ -219,8 +309,8 @@
             </div>
         </section>
 
-        <section class="doc-card">
-            <h2><span class="n">5</span>Mehrere Bots</h2>
+        <section class="doc-card reveal" id="s-multi">
+            <h2><span class="icon-chip" style="--chip-bg:rgba(255,46,138,0.14); --chip-fg:#ff6fb0; --chip-ring:rgba(255,46,138,0.24)"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="4" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="4" y="13" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="13" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.7"/></svg></span>Mehrere Bots</h2>
             <p>Du kannst bis zu <b>fünf Bots gleichzeitig</b> auf dem Desktop haben — jeder mit eigenem Look und eigener Aufgabe.</p>
             <ul>
                 <li>Im Studio wählst du oben über die <b>Bot-Tabs</b> aus, welchen Bot du gerade bearbeitest.</li>
@@ -231,8 +321,8 @@
             <img class="doc-img" src="anleitung_multibot.png" alt="Bis zu fünf OptiBots gleichzeitig, jeder mit eigenem Look">
         </section>
 
-        <section class="doc-card">
-            <h2><span class="n">6</span>Häufige Fragen</h2>
+        <section class="doc-card reveal" id="s-faq">
+            <h2><span class="icon-chip" style="--chip-bg:rgba(77,216,208,0.15); --chip-fg:#4dd8d0; --chip-ring:rgba(77,216,208,0.24)"><svg viewBox="0 0 24 24" fill="none"><path d="M9.5 9a2.5 2.5 0 115 0c0 1.5-2.5 1.6-2.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/></svg></span>Häufige Fragen</h2>
             <ul>
                 <li><b>Verbraucht OptiBot viel Leistung?</b> Nein. Die 3D-Anzeige ist stark optimiert, und sobald du den Bot ausblendest, drosselt er sich auf nahezu null.</li>
                 <li><b>Warum braucht OptiBot Admin-Rechte?</b> RAM-Bereinigung und das Umschalten von Windows-Energieplänen sind Systemfunktionen — ohne Administratorrechte darf kein Programm sie ausführen.</li>
@@ -250,5 +340,30 @@
         <p>&copy; 2026 OptiBot &middot; <a href="index.html">Startseite</a></p>
         <p class="credit">3D-Modell &bdquo;WheelBot&ldquo; von <a href="https://bowley3d.itch.io/wheelbot-robot-character" target="_blank" rel="noopener">Bowley3D</a></p>
     </footer>
+
+    <script>
+        // Cards fade/slide in as they enter view — this page skips the main
+        // site's script.js (no 3D scene here), so the base stylesheet's
+        // opacity:0 default is undone inline and this observer drives the
+        // reveal instead, scoped to just the .reveal cards.
+        const cards = document.querySelectorAll('.doc-card.reveal');
+        const cardObserver = new IntersectionObserver((entries) => {
+            entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+        }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+        cards.forEach(c => cardObserver.observe(c));
+
+        // Side-rail dot nav: highlight whichever section is currently most
+        // in view, same idea as the main site's scroll-progress bar but as
+        // discrete stops since this page is a fixed set of topics, not a
+        // continuous scene.
+        const navDots = document.querySelectorAll('.doc-nav a');
+        const navObserver = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                if (!e.isIntersecting) return;
+                navDots.forEach(d => d.classList.toggle('active', d.dataset.target === e.target.id));
+            });
+        }, { threshold: 0.5 });
+        cards.forEach(c => navObserver.observe(c));
+    </script>
 </body>
 </html>
