@@ -120,6 +120,7 @@ nav {
 .btn-ghost:hover { color: #fff; background: rgba(255,255,255,0.08); }
 
 .btn-nav {
+    display: inline-flex; align-items: center; gap: 7px;
     color: #fff;
     text-decoration: none;
     font-size: 14px;
@@ -130,6 +131,7 @@ nav {
     transition: background 0.3s, transform 0.3s;
 }
 .btn-nav:hover { background: #007AFF; transform: scale(1.04); }
+.btn-icon { width: 15px; height: 15px; flex-shrink: 0; }
 
 main { position: relative; z-index: 10; }
 
@@ -204,7 +206,7 @@ section.visible {
 .download-section p { font-size: clamp(17px, 2.5vw, 24px); color: #86868b; margin-bottom: 40px; }
 
 .btn-large {
-    display: inline-block;
+    display: inline-flex; align-items: center; gap: 10px;
     color: #fff;
     text-decoration: none;
     font-size: 18px;
@@ -216,6 +218,7 @@ section.visible {
     box-shadow: 0 10px 30px rgba(10,132,255,0.3);
 }
 .btn-large:hover { background: #007AFF; transform: scale(1.05); }
+.btn-large .btn-icon { width: 19px; height: 19px; }
 
 .download-meta { margin-top: 20px; font-size: 13px; color: rgba(255,255,255,0.4); letter-spacing: 0.3px; }
 /* Sits between the intro paragraph and the CTA button rather than after

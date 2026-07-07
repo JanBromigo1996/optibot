@@ -295,7 +295,14 @@ function updateExtraBots(dt, active, centerX, centerY) {
     const now = Date.now();
     extraBots.forEach((bot, i) => {
         const target = active ? 1 : 0;
-        bot.userData.scaleVel += (220 * (target - bot.userData.scaleVal) - 14 * bot.userData.scaleVel) * dt;
+        // Bouncy pop-in on entrance (k=220/d=14, underdamped — the little
+        // overshoot reads as lively), but a much stiffer, critically-damped
+        // spring on exit (k=500/d=45) — the underdamped exit used to linger
+        // as faint, slowly-shrinking ghosts for a second or more after
+        // scrolling past the section, which is exactly what showed up as
+        // "the animation is wrong" in a screenshot taken mid-scroll.
+        const k = active ? 220 : 500, d = active ? 14 : 45;
+        bot.userData.scaleVel += (k * (target - bot.userData.scaleVal) - d * bot.userData.scaleVel) * dt;
         bot.userData.scaleVal += bot.userData.scaleVel * dt;
         const s = Math.max(0, bot.userData.scaleVal);
         if (s < 0.01 && !active) { bot.visible = false; return; }
@@ -484,17 +491,21 @@ function init() {
     // Key intensity goes up but ambient goes DOWN at the same time, so the
     // lit face of the bot gets punchier highlights while the shadow side
     // stays genuinely dark instead of just uniformly dimmer.
-    const dirLight = new THREE.DirectionalLight(0xfff4e0, 0.95);
+    const dirLight = new THREE.DirectionalLight(0xfff4e0, 1.1);
     dirLight.position.set(100, 200, 50);
     scene.add(dirLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.07);
+    // Slightly raised from 0.07: at near-zero ambient, the shadow side of
+    // the head lost enough form to read as "murky" rather than deliberately
+    // moody — this keeps real contrast (still far below the key light)
+    // while the dark side stays legible instead of crushing to pure black.
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.11);
     scene.add(ambientLight);
 
     // Rim/kicker light from behind-and-above: puts a bright edge along the
     // top/back of the head so the bot's outline reads clearly against black
     // even where the front key light doesn't reach.
-    const rimLight = new THREE.DirectionalLight(0x8fd6ff, 1.7);
+    const rimLight = new THREE.DirectionalLight(0x8fd6ff, 1.9);
     rimLight.position.set(-120, 160, -180);
     scene.add(rimLight);
 
@@ -515,12 +526,12 @@ function init() {
     accentLight.position.set(-60, 40, 200);
     scene.add(accentLight);
 
-    renderer.toneMappingExposure = 0.92;
+    renderer.toneMappingExposure = 1.02;
 
     // Composer
     composer = new THREE.EffectComposer(renderer);
     composer.addPass(new THREE.RenderPass(scene, camera));
-    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.42, 0.45, 0.78);
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.5, 0.45, 0.76);
     composer.addPass(bloomPass);
 
     // Real PBR maps, same set the app itself uses (FBX-embedded texture refs
