@@ -24,7 +24,13 @@ body {
     z-index: -1;
     pointer-events: none;
     background: radial-gradient(ellipse 70% 55% at 50% 55%, var(--accent-glow, rgba(10,132,255,0.16)), transparent 72%);
-    transition: background 1.4s ease;
+    /* No CSS transition here on purpose: script.js already eases the color
+       itself (curGlowColor.lerp) and throttles how often it writes this
+       property. A transition on top of that double-eases AND forces the
+       browser to treat this full-viewport gradient as continuously
+       animating (repainting every frame) for the transition's whole
+       duration on every single update — measurably expensive layered on
+       top of the WebGL canvas's own 60fps redraw. */
 }
 
 /* Thin top-of-viewport progress bar, filled by script.js as the user scrolls
@@ -41,16 +47,20 @@ body {
     pointer-events: none;
 }
 
-/* Subtle animated film grain — a flat pure-black background reads as
+/* Subtle static film grain — a flat pure-black background reads as
    "digital/cheap" at large sizes; a faint texture is what separates a real
-   cinematic black from a CSS black. Pure SVG turbulence, no image asset. */
+   cinematic black from a CSS black. Pure SVG turbulence, no image asset.
+   Deliberately NOT mix-blend-mode (was "overlay"): a full-viewport blended
+   layer forces the browser onto a much more expensive compositing path,
+   re-reading the actual pixels of everything underneath — including the
+   WebGL canvas — on every single one of its 60fps redraws. Plain low
+   opacity is compositor-cheap and, at 3.5%, visually almost identical. */
 #grain-overlay {
     position: fixed;
     inset: 0;
-    z-index: 150;
+    z-index: 50;
     pointer-events: none;
-    opacity: 0.05;
-    mix-blend-mode: overlay;
+    opacity: 0.035;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 

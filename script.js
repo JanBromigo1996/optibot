@@ -21,6 +21,7 @@ const elScrollProgress = document.getElementById('scroll-progress');
 const elAmbientGlow = document.getElementById('ambient-glow');
 const elScrollHint = document.getElementById('scroll-hint');
 let curGlowColor = new THREE.Color(0x0A84FF);
+let lastGlowWriteAt = 0;
 
 // Scroll state must live at module scope: animate() reads it every frame —
 // declared inside init() it throws a ReferenceError that kills the whole
@@ -867,10 +868,18 @@ function animate() {
     // Ambient page glow tracks the same accent color as the 3D scene's own
     // accentLight, so the atmosphere behind the text shifts with it too —
     // subtle (low alpha) on purpose, this is a mood wash, not a spotlight.
+    // The color itself eases every frame (cheap, plain math), but the
+    // actual DOM write is throttled to ~12fps: writing this custom property
+    // repaints a full-viewport gradient, and a slow color wash gains
+    // nothing visually from doing that at the WebGL canvas's full 60fps.
     if (elAmbientGlow) {
         curGlowColor.lerp(targetColor.blue, 0.03);
-        const r = Math.round(curGlowColor.r * 255), g = Math.round(curGlowColor.g * 255), b = Math.round(curGlowColor.b * 255);
-        elAmbientGlow.style.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.16)`);
+        const now = performance.now();
+        if (now - lastGlowWriteAt > 80) {
+            lastGlowWriteAt = now;
+            const r = Math.round(curGlowColor.r * 255), g = Math.round(curGlowColor.g * 255), b = Math.round(curGlowColor.b * 255);
+            elAmbientGlow.style.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.16)`);
+        }
     }
 
     if (elScrollProgress) {
