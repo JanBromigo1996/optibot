@@ -905,35 +905,60 @@ let mouseX = 0, mouseY = 0;
 const curCam = { pos: new THREE.Vector3(0, 60, 430), look: new THREE.Vector3(0, 40, 0) };
 let curRobotX = 0, curRobotY = KEYFRAMES[0].robotY, curRotY = 0;
 
-function getSectionProgress() {
+// Real perf bug, reported as "ruckelt ganz schön doll": getSectionProgress()
+// runs every single animate() frame (60x/sec) and used to re-query
+// document.getElementById() for all 7 sections AND call
+// getBoundingClientRect() up to 10 times per call — each of those forces a
+// synchronous layout reflow if anything on the page has changed since the
+// last layout (which is constantly true here: the scroll-progress bar width,
+// the ambient-glow custom property, and the WebGL canvas itself all write to
+// the DOM/repaint every frame). That's a textbook layout-thrashing pattern.
+// Sections don't move relative to the *document* — only which part of them
+// the viewport is currently looking at changes — so their absolute
+// document-space centers only need computing once (cached here) instead of
+// every frame; per-frame progress becomes pure arithmetic against
+// window.scrollY (which is free, no reflow) with zero DOM reads at all.
+let sectionCenters = [];
+// Same layout-thrashing problem as getBoundingClientRect() above:
+// document.body.scrollHeight also forces a synchronous reflow, and the old
+// code read it fresh every single frame just to compute the scroll-progress
+// bar's width. Total page height barely ever changes mid-session — cached
+// alongside the section centers, refreshed on the same resize/load events.
+let cachedMaxScroll = 1;
+function cacheSectionCenters() {
     const sections = SECTION_IDS.map(id => document.getElementById(id)).filter(Boolean);
-    if (sections.length === 0) return 0;
-    
+    sectionCenters = sections.map(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.top + rect.height / 2 + window.scrollY;
+    });
+    cachedMaxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
+}
+cacheSectionCenters();
+window.addEventListener('resize', cacheSectionCenters);
+// Late-loading fonts/images can still reflow the page after first paint —
+// one more free (rare, one-off) re-cache once everything has truly settled.
+window.addEventListener('load', cacheSectionCenters);
+
+function getSectionProgress() {
+    if (sectionCenters.length === 0) return 0;
+
     // We map progress=N to the exact moment the CENTER of section N hits the CENTER of the screen.
     // This perfectly aligns the 3D bot's keyframes with the user's reading focus.
     const scrollCenter = window.scrollY + window.innerHeight * 0.5;
-    
+
     // Handle edge case: if we are above the center of the first section, pin to 0.
-    const firstRect = sections[0].getBoundingClientRect();
-    const firstCenter = firstRect.top + firstRect.height / 2 + window.scrollY;
-    if (scrollCenter <= firstCenter) return 0;
-    
+    if (scrollCenter <= sectionCenters[0]) return 0;
+
     let idx = 0;
-    for (let i = 0; i < sections.length; i++) {
-        const rect = sections[i].getBoundingClientRect();
-        const center = rect.top + rect.height / 2 + window.scrollY;
-        if (scrollCenter >= center) idx = i;
+    for (let i = 0; i < sectionCenters.length; i++) {
+        if (scrollCenter >= sectionCenters[i]) idx = i;
     }
-    
-    const cur = sections[idx];
-    const next = sections[idx + 1];
-    if (!next) return idx;
-    
-    const curRect = cur.getBoundingClientRect();
-    const nextRect = next.getBoundingClientRect();
-    const curCenter = curRect.top + curRect.height / 2 + window.scrollY;
-    const nextCenter = nextRect.top + nextRect.height / 2 + window.scrollY;
-    
+
+    if (idx + 1 >= sectionCenters.length) return idx;
+
+    const curCenter = sectionCenters[idx];
+    const nextCenter = sectionCenters[idx + 1];
+
     const span = Math.max(1, nextCenter - curCenter);
     const frac = Math.max(0, Math.min(1, (scrollCenter - curCenter) / span));
     
@@ -1230,8 +1255,7 @@ function animate() {
     }
 
     if (elScrollProgress) {
-        const maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
-        const pct = Math.max(0, Math.min(1, window.scrollY / maxScroll)) * 100;
+        const pct = Math.max(0, Math.min(1, window.scrollY / cachedMaxScroll)) * 100;
         elScrollProgress.style.width = pct + '%';
     }
     if (elScrollHint) {
@@ -1290,8 +1314,7 @@ function startFallbackMode() {
     function fallbackTick() {
         requestAnimationFrame(fallbackTick);
         if (elScrollProgress) {
-            const maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
-            const pct = Math.max(0, Math.min(1, window.scrollY / maxScroll)) * 100;
+            const pct = Math.max(0, Math.min(1, window.scrollY / cachedMaxScroll)) * 100;
             elScrollProgress.style.width = pct + '%';
         }
     }
