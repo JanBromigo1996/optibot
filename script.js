@@ -11,7 +11,7 @@ document.querySelectorAll('.slide-up').forEach(el => observer.observe(el));
 
 // Three.js Setup
 let scene, camera, renderer, composer, bloomPass, robot, mixer;
-let bodyBaseMat, bodyBlueMat;
+let bodyBaseMat, bodyBlueMat, bodySidesMat;
 const clock = new THREE.Clock();
 
 // Scroll state must live at module scope: animate() reads it every frame —
@@ -29,31 +29,56 @@ let scrollFrac = 0; // damped, eased 0..1 position through the page
 // nothing itself — no boxes, no borders, no visible frame anywhere).
 // ------------------------------------------------------------------
 const SECTION_IDS = ['section-hero', 'section-smart', 'section-style', 'section-multi', 'section-stats', 'section-light', 'download'];
-const KEYFRAMES = [
-    // hero — centered, raised so he reads as present/alive right under the
-    // headline rather than sunk near the bottom of the viewport
-    { camPos: [0, 65, 520], camLook: [0, 42, 0], robotX: 0, robotY: -168, rotY: 0 },
-    // smart engine — text on the left, bot drifts into the right half
-    { camPos: [10, 55, 380], camLook: [0, 48, 0], robotX: 92, robotY: -90, rotY: 0.55 },
+// camLook.y is derived from robotY + a fraction of the camera distance,
+// rather than hand-picked per keyframe — a fixed pixel offset only looks
+// right at the one viewport height it was tuned against, and reports of the
+// bot sitting "too low" / "covered by text" on other window sizes traced
+// back to exactly that. Aiming the camera at a point *above* where the bot
+// actually is pushes it consistently into the lower part of the frame as a
+// proportion of the view, which holds regardless of viewport height (the
+// same geometric relationship, just at a different pixel scale).
+const VERTICAL_BIAS = 0.21;
+// robot.position.y sits at the model's own *feet* (confirmed via a live
+// Box3 check: box.min.y ≈ robot.position.y, box center is ~70 units
+// higher) — the actual visually-dominant part is the head/eyes near the
+// box center, not the origin point. Biasing off the raw origin was
+// aiming the "clear the text" math at the feet, so the head (70 units
+// higher than assumed) ended up ~0.15 of the frame higher than intended,
+// squarely back in the text.
+const HEAD_OFFSET = 70;
+function withBias(camPosZ, robotY) { return robotY + HEAD_OFFSET + camPosZ * VERTICAL_BIAS; }
+
+const RAW_KEYFRAMES = [
+    // hero — centered under the headline, comfortably clear of the meta line
+    { camPos: [0, 0, 750], robotX: 0, robotY: -108, rotY: 0 },
+    // smart engine — text on the left, bot drifts into the right half.
+    // Swing kept gentle (was ±92 / ±0.55, now ±65 / ±0.32) so the handoff
+    // to the next section reads as a drift, not a disorienting cross-spin.
+    { camPos: [0, 0, 420], robotX: 65, robotY: -95, rotY: 0.32 },
     // customization — text on the right, bot drifts into the left half
-    { camPos: [-10, 55, 380], camLook: [0, 48, 0], robotX: -92, robotY: -90, rotY: -0.55 },
-    // multi-bot lineup — pulled back and centered so all five fit in frame;
-    // the main bot becomes the middle of the lineup, four clones fan out
-    // either side of it (see updateExtraBots)
-    { camPos: [0, 40, 850], camLook: [0, 0, 0], robotX: 0, robotY: -210, rotY: 0 },
+    { camPos: [0, 0, 420], robotX: -65, robotY: -95, rotY: -0.32 },
+    // multi-bot lineup — pulled back so all five fit in frame; the main bot
+    // is the middle of the lineup, four clones fan out either side of it
+    { camPos: [0, 0, 1000], robotX: 0, robotY: -110, rotY: 0 },
     // stats display — text on the left, bot (showing the display, not eyes)
     // drifts into the right half, framed a bit closer so the display reads
-    { camPos: [-10, 50, 300], camLook: [0, 58, 0], robotX: 85, robotY: -55, rotY: 0.3 },
+    { camPos: [0, 0, 360], robotX: 60, robotY: -80, rotY: 0.22 },
     // lightweight — this section's text is centered (no side spacer to slot
     // into), so instead of competing for the same middle of the frame the
     // bot pulls back, rises, and shrinks toward the top — a small, distant
     // presence above the copy rather than sitting behind/through it
-    { camPos: [0, 150, 640], camLook: [0, 95, 0], robotX: 0, robotY: -20, rotY: 0.12 },
-    // download — pulled back and lower: this section is shorter (630px) and
-    // has its own "Zur Anleitung" link near the bottom, which the bot was
-    // sitting directly on top of at a higher position
-    { camPos: [0, 40, 560], camLook: [0, 25, 0], robotX: 0, robotY: -195, rotY: 0 },
+    { camPos: [0, 0, 640], robotX: 0, robotY: -20, rotY: 0.12, camLookYOverride: 95 },
+    // download — pulled back and low: this section is shorter (630px) and
+    // has its own "Zur Anleitung" link, which the bot must stay well clear of
+    { camPos: [0, 0, 700], robotX: 0, robotY: -260, rotY: 0 },
 ];
+const KEYFRAMES = RAW_KEYFRAMES.map(k => ({
+    camPos: [k.camPos[0], k.camPos[1], k.camPos[2]],
+    camLook: [0, k.camLookYOverride !== undefined ? k.camLookYOverride : withBias(k.camPos[2], k.robotY), 0],
+    robotX: k.robotX,
+    robotY: k.robotY,
+    rotY: k.rotY
+}));
 
 // Curated looks the bot cycles through, live, while the "Dein Bot, dein
 // Stil" section is in view — an animated demonstration of Studio
@@ -64,18 +89,19 @@ const KEYFRAMES = [
 // exclusive and exactly one wheel is ever equipped, matching the real
 // Studio's own equip-slot rules.
 const STYLE_LOOKS = [
-    { body: 0xffffff, blue: 0x2a4fd6, ears: false, glasses: false, hat: false, antenna: false, wheel1: false },
-    { body: 0xe8452c, blue: 0x1c1c1e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false },
-    { body: 0x2a4fd6, blue: 0xffffff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false },
-    { body: 0xf5f5f7, blue: 0x7ddfc3, ears: true, glasses: true, hat: false, antenna: false, wheel1: true },
-    { body: 0x1c1c1e, blue: 0xae8f2a, ears: false, glasses: false, hat: true, antenna: false, wheel1: true },
-    { body: 0x9aa0a6, blue: 0x2c2c2e, ears: true, glasses: false, hat: false, antenna: true, wheel1: true },
-    { body: 0xffffff, blue: 0x7ddfc3, ears: false, glasses: true, hat: false, antenna: true, wheel1: false },
+    { body: 0xffffff, blue: 0x2a4fd6, ears: false, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Standard' },
+    { body: 0xe8452c, blue: 0x1c1c1e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
+    { body: 0x2a4fd6, blue: 0xffffff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' },
+    { body: 0xf5f5f7, blue: 0x7ddfc3, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
+    { body: 0x1c1c1e, blue: 0xae8f2a, ears: false, glasses: false, hat: true, antenna: false, wheel1: true, material: 'Matte' },
+    { body: 0x9aa0a6, blue: 0x2c2c2e, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
+    { body: 0xffffff, blue: 0x7ddfc3, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
 ];
 let styleLookIndex = 0;
 let styleLookTimer = 0;
 const STYLE_LOOK_HOLD = 2.2; // seconds per look
 const targetColor = { body: new THREE.Color(0xffffff), blue: new THREE.Color(0x2a4fd6) };
+let targetMaterialName = 'Standard';
 
 function applyAccessoryLook(look, target) {
     (target || robot).traverse(c => {
@@ -113,13 +139,51 @@ function updateAccessoryPop(dt) {
 // set .name (see the 'body_base'/'body_blue' tags below) specifically so
 // clones stay independently identifiable and tintable after robot.clone().
 function getBodyMats(obj) {
-    let base = null, blue = null;
+    let base = null, blue = null, sides = null;
     obj.traverse(c => {
         if (!c.isMesh || !c.material) return;
         if (c.material.name === 'body_base') base = c.material;
         if (c.material.name === 'body_blue') blue = c.material;
+        if (c.material.name === 'body_sides') sides = c.material;
     });
-    return { base, blue };
+    return { base, blue, sides };
+}
+
+// Material-finish presets (mirrors the real desktop app's MATERIAL_PRESETS)
+// — cycling only body *color* was missing half of what Studio actually lets
+// you change; this lets the demo show a genuine finish swap (Chrome/Matte/
+// Gloss/...) alongside the color, lerped smoothly like everything else here.
+const MATERIAL_PRESETS = {
+    Standard: { roughness: 1.0, metalness: 1.0, clearcoat: 0.35, clearcoatRoughness: 0.25 },
+    Chrome: { roughness: 0.05, metalness: 1.0, clearcoat: 0.6, clearcoatRoughness: 0.05 },
+    Matte: { roughness: 1.0, metalness: 0.15, clearcoat: 0.0, clearcoatRoughness: 0.0 },
+    Gloss: { roughness: 0.15, metalness: 0.1, clearcoat: 0.9, clearcoatRoughness: 0.03 },
+    Satin: { roughness: 0.55, metalness: 0.25, clearcoat: 0.15, clearcoatRoughness: 0.4 },
+};
+const curMaterialProps = { roughness: 1.0, metalness: 1.0, clearcoat: 0.35, clearcoatRoughness: 0.25 };
+function lerpMaterialTo(mats, presetName, t) {
+    const p = MATERIAL_PRESETS[presetName] || MATERIAL_PRESETS.Standard;
+    curMaterialProps.roughness += (p.roughness - curMaterialProps.roughness) * t;
+    curMaterialProps.metalness += (p.metalness - curMaterialProps.metalness) * t;
+    curMaterialProps.clearcoat += (p.clearcoat - curMaterialProps.clearcoat) * t;
+    curMaterialProps.clearcoatRoughness += (p.clearcoatRoughness - curMaterialProps.clearcoatRoughness) * t;
+    [mats.base, mats.blue, mats.sides].forEach(m => {
+        if (!m) return;
+        m.roughness = curMaterialProps.roughness;
+        m.metalness = curMaterialProps.metalness;
+        m.clearcoat = curMaterialProps.clearcoat;
+        m.clearcoatRoughness = curMaterialProps.clearcoatRoughness;
+    });
+}
+function setMaterialInstant(mats, presetName) {
+    const p = MATERIAL_PRESETS[presetName] || MATERIAL_PRESETS.Standard;
+    [mats.base, mats.blue, mats.sides].forEach(m => {
+        if (!m) return;
+        m.roughness = p.roughness;
+        m.metalness = p.metalness;
+        m.clearcoat = p.clearcoat;
+        m.clearcoatRoughness = p.clearcoatRoughness;
+    });
 }
 
 // ------------------------------------------------------------------
@@ -128,11 +192,15 @@ function getBodyMats(obj) {
 // einmal" section is in view. Each gets its own idle-motion phase offset
 // so five bots don't breathe/bob in obvious lockstep.
 // ------------------------------------------------------------------
+// Each of the (up to 5) bots gets its own color, finish AND accessory —
+// previously only color varied, so the "lineup" barely looked different
+// bot to bot. Main bot (center, index 2 of 5 visually) keeps the plain
+// default look; these four fill out the rest with real variety.
 const EXTRA_BOT_LOOKS = [
-    { body: 0xffffff, blue: 0x19f2ff }, // Auto — cyan
-    { body: 0xffffff, blue: 0xffb84d }, // Work — amber
-    { body: 0x1c1c1e, blue: 0xff2e8a }, // Play — magenta
-    { body: 0xf5f5f7, blue: 0x7ddfc3 }, // a fifth, mint look
+    { body: 0xffffff, blue: 0x19f2ff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' }, // Auto — cyan, glasses, chrome
+    { body: 0x1c1c1e, blue: 0xffb84d, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Matte' }, // Work — amber, ears, matte
+    { body: 0x2a1030, blue: 0xff2e8a, ears: false, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Gloss' }, // Play — magenta, antenna, sport wheel, gloss
+    { body: 0xf5f5f7, blue: 0x7ddfc3, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' }, // mint, ears+glasses, sport wheel, satin
 ];
 let extraBots = [];
 function createExtraBots() {
@@ -148,6 +216,8 @@ function createExtraBots() {
         const mats = getBodyMats(clone);
         if (mats.base) mats.base.color.setHex(look.body);
         if (mats.blue) mats.blue.color.setHex(look.blue);
+        setMaterialInstant(mats, look.material);
+        applyAccessoryLook(look, clone);
         clone.userData.phase = i * 1.7 + 0.6; // desyncs the idle bob per bot
         clone.userData.scaleVal = 0;
         clone.userData.scaleVel = 0;
@@ -316,21 +386,33 @@ function init() {
     // — the body blew out to near-white and read as "dead", with nothing
     // for the eye-glow to contrast against. Toned down across the board so
     // the body has real shading and the eyes are the brightest thing in frame.
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+    // Further reduced again here + a dedicated rim light added below: flat
+    // front lighting on a matte-ish white body washes out toward the same
+    // near-white as everything else, so the silhouette barely separates
+    // from the pure-black backdrop — classic "product on black" photography
+    // fixes this with an edge/rim light, not just less front light.
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
     dirLight.position.set(100, 200, 50);
     scene.add(dirLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.22);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.14);
     scene.add(ambientLight);
+
+    // Rim/kicker light from behind-and-above: puts a bright edge along the
+    // top/back of the head so the bot's outline reads clearly against black
+    // even where the front key light doesn't reach.
+    const rimLight = new THREE.DirectionalLight(0x8fd6ff, 1.35);
+    rimLight.position.set(-120, 160, -180);
+    scene.add(rimLight);
 
     // Low front fill aimed at the wheel: dark rubber tire on a near-black
     // backdrop otherwise reads as "missing" (a real bug found in an earlier
     // pass on the Studio scene — same fix needed here).
-    const wheelFill = new THREE.PointLight(0xbfd8ff, 1.4, 320, 2);
+    const wheelFill = new THREE.PointLight(0xbfd8ff, 1.2, 320, 2);
     wheelFill.position.set(40, -30, 160);
     scene.add(wheelFill);
 
-    renderer.toneMappingExposure = 0.95;
+    renderer.toneMappingExposure = 0.85;
 
     // Composer
     composer = new THREE.EffectComposer(renderer);
@@ -359,7 +441,17 @@ function init() {
             mats.forEach((m, i) => {
                 const name = (m.name || '').toLowerCase();
                 let nm;
-                if (name === 'wheelbot_face') {
+                if (child.name === 'Acessory_Wheel_1') {
+                    // The tire ring itself has no usable material name in the
+                    // FBX (empty string) and was inheriting a stray white
+                    // default as a result — its hub child mesh ("..._Wheel")
+                    // correctly reuses body_sides, but this outer tire needs
+                    // its own explicit black-rubber material, matched by
+                    // mesh name instead since the material name is blank here.
+                    nm = new THREE.MeshPhysicalMaterial({
+                        color: 0x0e0e10, roughness: 0.92, metalness: 0.05
+                    });
+                } else if (name === 'wheelbot_face') {
                     nm = new THREE.MeshPhysicalMaterial({
                         map: faceTex, emissiveMap: faceTex,
                         emissive: 0xffffff, emissiveIntensity: 1.4,
@@ -377,8 +469,11 @@ function init() {
                 } else if (name.includes('body_sides')) {
                     nm = new THREE.MeshPhysicalMaterial({
                         map: baseColorMap, normalMap: normalMap, metalnessMap: metalnessMap,
-                        roughness: 1.0, metalness: 1.0, envMapIntensity: 1.35
+                        roughness: 1.0, metalness: 1.0, envMapIntensity: 1.35,
+                        clearcoat: 0.35, clearcoatRoughness: 0.25
                     });
+                    nm.name = 'body_sides';
+                    bodySidesMat = nm;
                 } else if (name.includes('body_base')) {
                     nm = new THREE.MeshPhysicalMaterial({
                         color: 0xffffff, normalMap: normalMap, metalnessMap: metalnessMap,
@@ -452,14 +547,28 @@ function getSectionProgress() {
     // Which keyframe pair we're between, and how far — driven by each
     // section's own position in the document rather than a raw scroll-pixel
     // ratio, so it stays correct regardless of section heights.
+    //
+    // Real bug fixed here: this used to measure the *viewport's own center*
+    // against section boundaries. Since each section is roughly one
+    // viewport-height tall, that means the moment a section merely scrolls
+    // into view at all, the viewport's center is already sitting near that
+    // section's own midpoint — so at scrollY=0 (page freshly loaded, hero
+    // fully in view, no scrolling done at all) this reported progress≈0.5,
+    // i.e. already half-blended toward the *next* keyframe before the user
+    // touched anything. That's exactly why the bot could render on top of
+    // the hero text at rest: it was never actually showing hero's own
+    // keyframe, always some blend toward "smart". Using the viewport's own
+    // *top* edge instead means progress is exactly N at the moment section N
+    // first fills the viewport from the top, and reaches N+1 only once
+    // you've scrolled a full section further — the mapping actually intended.
     const sections = SECTION_IDS.map(id => document.getElementById(id)).filter(Boolean);
     if (sections.length === 0) return 0;
-    const viewCenter = window.scrollY + window.innerHeight * 0.5;
+    const scrollTop = window.scrollY;
     let idx = 0;
     for (let i = 0; i < sections.length; i++) {
         const rect = sections[i].getBoundingClientRect();
         const top = rect.top + window.scrollY;
-        if (viewCenter >= top) idx = i;
+        if (scrollTop >= top) idx = i;
     }
     const cur = sections[idx];
     const next = sections[idx + 1];
@@ -467,7 +576,7 @@ function getSectionProgress() {
     const curTop = cur.getBoundingClientRect().top + window.scrollY;
     const nextTop = next.getBoundingClientRect().top + window.scrollY;
     const span = Math.max(1, nextTop - curTop);
-    const frac = Math.max(0, Math.min(1, (viewCenter - curTop) / span));
+    const frac = Math.max(0, Math.min(1, (scrollTop - curTop) / span));
     return idx + frac;
 }
 
@@ -547,7 +656,11 @@ function animate() {
         // mobile layout; everywhere else, fade down to a faint background
         // presence rather than colliding with whichever paragraph is
         // currently scrolled into that fixed screen position.
-        const showHero = Math.max(0, 1 - progress / 0.5);
+        // progress semantics changed with the getSectionProgress fix above:
+        // 0 = hero fully in view, 1 = fully transitioned to the next section
+        // — fade out over that whole range instead of the old (now wrong)
+        // halfway point.
+        const showHero = Math.max(0, 1 - progress / 0.9);
         const targetOpacity = Math.max(showHero, 0.05);
         const curOpacity = parseFloat(renderer.domElement.style.opacity || '1');
         renderer.domElement.style.opacity = String(lerp(curOpacity, targetOpacity, 0.06));
@@ -562,9 +675,17 @@ function animate() {
     // section's own end — but overshot so far that neighboring sections'
     // windows overlapped by more than half, which is why the stats display
     // was showing up while still inside the multi-bot section below).
-    const styleActive = progress > 1.85 && progress < 3.15;
-    const multiActive = progress > 2.85 && progress < 4.15;
-    const statsActive = progress > 3.85 && progress < 5.15;
+    // No cross-section bleed at all, on either edge: measured directly, the
+    // natural "resting" position for section N (its content nicely centered
+    // in the viewport) lands at progress≈N+0.05 — close to, but not exactly,
+    // the section's own start. Any bleed past the section's own [N, N+1)
+    // span, however small, risks still being "active" while at rest one
+    // section later (confirmed: a 0.08 bleed still had the multi-bot lineup
+    // fully visible while resting in "stats", one section past "multi").
+    // Exact non-overlapping ranges guarantee that can't happen.
+    const styleActive = progress >= 2 && progress < 3;
+    const multiActive = progress >= 3 && progress < 4;
+    const statsActive = progress >= 4 && progress < 5;
 
     if (robot) {
         robot.position.x = curRobotX;
@@ -580,6 +701,7 @@ function animate() {
         // is in view — a little squash-and-kick "pop" (see triggerAccessoryPop)
         // fires on every actual change so swapping outfits reads as a lively
         // reaction (Pixar-style anticipation/overshoot) instead of an instant cut.
+        const bodyMats = { base: bodyBaseMat, blue: bodyBlueMat, sides: bodySidesMat };
         if (styleActive && bodyBaseMat && bodyBlueMat) {
             styleLookTimer += delta;
             if (styleLookTimer > STYLE_LOOK_HOLD) {
@@ -588,11 +710,13 @@ function animate() {
                 const look = STYLE_LOOKS[styleLookIndex];
                 targetColor.body.setHex(look.body);
                 targetColor.blue.setHex(look.blue);
+                targetMaterialName = look.material;
                 applyAccessoryLook(look);
                 triggerAccessoryPop();
             }
             bodyBaseMat.color.lerp(targetColor.body, 0.04);
             bodyBlueMat.color.lerp(targetColor.blue, 0.04);
+            lerpMaterialTo(bodyMats, targetMaterialName, 0.05);
         } else if (bodyBaseMat && bodyBlueMat) {
             // Outside the customization section, ease back to the default
             // look (and reset the cycle) so later sections ("Federleicht",
@@ -603,8 +727,10 @@ function animate() {
             const def = STYLE_LOOKS[0];
             targetColor.body.setHex(def.body);
             targetColor.blue.setHex(def.blue);
+            targetMaterialName = def.material;
             bodyBaseMat.color.lerp(targetColor.body, 0.03);
             bodyBlueMat.color.lerp(targetColor.blue, 0.03);
+            lerpMaterialTo(bodyMats, targetMaterialName, 0.03);
             applyAccessoryLook(def);
         }
 
