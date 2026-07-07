@@ -122,6 +122,28 @@
             color: #b9d4ff;
         }
         .back-row { text-align: center; margin-top: 46px; }
+
+        .doc-img {
+            width: 100%;
+            display: block;
+            margin-top: 22px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: #000;
+        }
+        .doc-img-row {
+            display: flex;
+            gap: 14px;
+            margin-top: 22px;
+            flex-wrap: wrap;
+        }
+        .doc-img-row .doc-img { margin-top: 0; width: auto; min-width: 0; flex: 1 1 220px; }
+        .doc-caption {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #86868b;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -175,6 +197,7 @@
                 <li><b>Auto-Modus</b> (cyan): Alltag. Ausbalanciertes Energieprofil, alle Dienste normal.</li>
             </ul>
             <p>Während einer Optimierung läuft auf dem Gesichtsdisplay des zuständigen Bots ein Status-Text mit, und die Augenfarbe zeigt jederzeit den aktiven Modus.</p>
+            <img class="doc-img" src="anleitung_modes.png" alt="Die drei Augenfarben der Smart Engine: Auto (cyan), Work (bernstein), Play (magenta)">
             <div class="tip">💡 Die Smart Engine kannst du im Taskleisten-Menü unter „Automatische Optimierung" jederzeit an- oder abschalten. Über das Menü kannst du jeden Modus auch manuell setzen.</div>
         </section>
 
@@ -187,6 +210,11 @@
                 <li><b>Materialien:</b> Von Chrome über Carbon bis Gloss — echte Oberflächen-Presets mit realistischen Reflexionen.</li>
                 <li><b>Umgebungslicht:</b> Sunset, Night, Neon, Cinematic oder Studio — bestimmt, wie sich Licht auf dem Bot spiegelt.</li>
             </ul>
+            <div class="doc-img-row">
+                <img class="doc-img" src="anleitung_studio1.png" alt="OptiBot Studio: Übersicht mit Inspector-Panel">
+                <img class="doc-img" src="anleitung_studio2.png" alt="OptiBot Studio: Bot mit Accessoires und Farben">
+                <img class="doc-img" src="anleitung_studio3.png" alt="OptiBot Studio: Farbauswahl und Oberflächen-Presets">
+            </div>
         </section>
 
         <section class="doc-card">
@@ -197,6 +225,7 @@
                 <li>Mit <span class="kbd">+ Bot</span> / <span class="kbd">− Bot</span> (im Studio oder Taskleisten-Menü) spawnst und entfernst du Bots.</li>
                 <li>Jeder Bot hat eine <b>Rolle</b> (Auto, Work oder Play): Er reagiert sichtbar, wenn die Smart Engine „seinen" Modus aktiviert — so siehst du auf einen Blick, was dein System gerade macht.</li>
             </ul>
+            <img class="doc-img" src="anleitung_multibot.png" alt="Bis zu fünf OptiBots gleichzeitig, jeder mit eigenem Look">
         </section>
 
         <section class="doc-card">
