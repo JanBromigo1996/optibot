@@ -58,16 +58,16 @@ const HEAD_OFFSET = 70;
 function withBias(camPosZ, robotY) { return robotY + HEAD_OFFSET + camPosZ * VERTICAL_BIAS; }
 
 const RAW_KEYFRAMES = [
-    // hero — centered under the headline. At in-between viewport heights
-    // (~950px, a common laptop-with-browser-chrome size — too tall to
-    // trigger the <760 compact/mobile treatment, but shorter than a full
-    // 1080 desktop) the previous camPos.z=750 put the head-top right on
-    // top of the "Für Windows..." badge (measured via direct NDC
-    // projection against the badge's own getBoundingClientRect: head-top
-    // ≈612 vs badge span 645-664). Pulled back and lowered to clear it
-    // with real margin at 950px while still framing cleanly at 700
-    // (handled separately by MOBILE_KEYFRAME) and 1080+.
-    { camPos: [0, 0, 1700], robotX: 0, robotY: -60, rotY: 0 },
+    // hero — centered under the headline. An earlier pass (z=1700) was
+    // pulled back far enough to dodge the "Für Windows..." badge at
+    // in-between viewport heights (~950px), but that same distance also
+    // read as "static tiny bot in the middle of the screen" at every
+    // height — reported feedback. Framing badge-clearance with vertical
+    // offset (robotY) instead of pure distance keeps the bot roughly 2x
+    // larger while still clearing the badge with real margin, verified at
+    // 700/900/1080px viewport heights (mobile handled separately by
+    // MOBILE_KEYFRAME).
+    { camPos: [0, 0, 1200], robotX: 0, robotY: -185, rotY: 0 },
     // smart engine — text on the left, bot drifts into the right half.
     // Swing kept gentle (was ±92 / ±0.55, now ±65 / ±0.32) so the handoff
     // to the next section reads as a drift, not a disorienting cross-spin.
@@ -133,7 +133,7 @@ const STYLE_LOOKS = [
 ];
 let styleLookIndex = 0;
 let styleLookTimer = 0;
-const STYLE_LOOK_HOLD = 2.2; // seconds per look
+const STYLE_LOOK_HOLD = 1.4; // seconds per look — was 2.2s, reported as too slow
 const targetColor = { body: new THREE.Color(0xffffff), blue: new THREE.Color(0x2a4fd6), sides: new THREE.Color(0xf2f2f4) };
 let targetMaterialName = 'Standard';
 
@@ -173,14 +173,15 @@ function updateAccessoryPop(dt) {
 // set .name (see the 'body_base'/'body_blue' tags below) specifically so
 // clones stay independently identifiable and tintable after robot.clone().
 function getBodyMats(obj) {
-    let base = null, blue = null, sides = null;
+    let base = null, blue = null, sides = null, face = null;
     obj.traverse(c => {
         if (!c.isMesh || !c.material) return;
         if (c.material.name === 'body_base') base = c.material;
         if (c.material.name === 'body_blue') blue = c.material;
         if (c.material.name === 'body_sides') sides = c.material;
+        if (c.material.name === 'wheelbot_face') face = c.material;
     });
-    return { base, blue, sides };
+    return { base, blue, sides, face };
 }
 
 // Material-finish presets (mirrors the real desktop app's MATERIAL_PRESETS)
@@ -230,33 +231,29 @@ function setMaterialInstant(mats, presetName) {
 // previously only color varied, so the "lineup" barely looked different
 // bot to bot. Main bot (center, index 2 of 5 visually) keeps the plain
 // default look; these four fill out the rest with real variety.
+// Each bot keeps ONE fixed, saturated, clearly-distinct look for good —
+// this used to swap between a primary/alt look on a timer, which read as
+// the opposite of "5 individual bots" (their identity kept dissolving
+// into each other instead of staying recognizable). Bot 4's body was
+// near-white, same family as bot 1's — swapped to a dark teal so all four
+// silhouettes are unambiguously different at a glance, not just the glow.
 const EXTRA_BOT_LOOKS = [
     { body: 0xffffff, blue: 0x00e5ff, sides: 0xf2f2f4, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' }, // Auto — electric cyan, glasses, chrome
-    { body: 0x1c1c1e, blue: 0xffa000, sides: 0x2c2c2e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Matte' }, // Work — vivid amber, ears, matte
+    { body: 0x331c08, blue: 0xffa000, sides: 0x40230a, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Matte' }, // Work — warm amber-brown body (a neutral near-black washed pale under the bright rim/bloom), vivid amber, ears, matte
     { body: 0x2a1030, blue: 0xff0080, sides: 0x241226, ears: false, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Gloss' }, // Play — hot magenta, antenna, sport wheel, gloss
-    { body: 0xf5f5f7, blue: 0x00e5a8, sides: 0xd6d6da, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' }, // vivid mint, ears+glasses, sport wheel, satin
-];
-// A short alternate look each extra bot occasionally swaps to on its own
-// clock (see updateExtraBots) so the lineup doesn't sit static — each bot
-// picks its own moment independent of the others and of the main bot's
-// customization cycle, which is the "individual" animation being asked for.
-const EXTRA_BOT_ALT_LOOKS = [
-    { body: 0xffffff, blue: 0xff2d1e, sides: 0xf2f2f4, ears: true, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
-    { body: 0x1c1c1e, blue: 0x00d4ff, sides: 0x2c2c2e, ears: false, glasses: false, hat: false, antenna: true, wheel1: false, material: 'Chrome' },
-    { body: 0x2a1030, blue: 0xffb800, sides: 0x241226, ears: false, glasses: true, hat: false, antenna: true, wheel1: true, material: 'Satin' },
-    { body: 0xf5f5f7, blue: 0x0057ff, sides: 0xd6d6da, ears: false, glasses: false, hat: false, antenna: false, wheel1: true, material: 'Matte' },
+    { body: 0x0a1f2e, blue: 0x00ffb8, sides: 0x123241, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' }, // deep teal + vivid mint, ears+glasses, sport wheel, satin
 ];
 let extraBots = [];
-// Per-bot bob/turn frequency+amplitude multipliers — previously every bot
-// ran the exact same sine formula and only differed by phase, so five bots
-// side by side still visibly breathed "in sync" once you looked for it.
-// Distinct per-bot speeds/amplitudes make each one read as having its own
-// small personality instead of one animation copy-pasted four times.
+// Per-bot bob/turn frequency+amplitude — every bot ran the exact same sine
+// formula and only differed by phase, so five bots side by side still
+// visibly breathed "in sync" once you looked for it. Distinct per-bot
+// speeds/amplitudes make each one read as having its own small
+// personality. Bumped up from the original values (reported as too slow).
 const EXTRA_BOT_MOTION = [
-    { bobFreq: 0.0018, bobAmp: 4, turnFreq: 0.0009, turnAmp: 0.15, swapEvery: 5.5 },
-    { bobFreq: 0.0026, bobAmp: 3, turnFreq: 0.0013, turnAmp: 0.22, swapEvery: 7.0 },
-    { bobFreq: 0.0014, bobAmp: 6, turnFreq: 0.0007, turnAmp: 0.11, swapEvery: 6.2 },
-    { bobFreq: 0.0021, bobAmp: 4.5, turnFreq: 0.0016, turnAmp: 0.18, swapEvery: 8.4 },
+    { bobFreq: 0.0026, bobAmp: 4.5, turnFreq: 0.0014, turnAmp: 0.17 },
+    { bobFreq: 0.0038, bobAmp: 3.5, turnFreq: 0.0019, turnAmp: 0.25 },
+    { bobFreq: 0.0021, bobAmp: 6.5, turnFreq: 0.0011, turnAmp: 0.13 },
+    { bobFreq: 0.0031, bobAmp: 5, turnFreq: 0.0023, turnAmp: 0.2 },
 ];
 function createExtraBots() {
     EXTRA_BOT_LOOKS.forEach((look, i) => {
@@ -272,14 +269,19 @@ function createExtraBots() {
         if (mats.base) mats.base.color.setHex(look.body);
         if (mats.blue) mats.blue.color.setHex(look.blue);
         if (mats.sides) mats.sides.color.setHex(look.sides);
+        // The face screen is by far the most eye-catching part of the head
+        // at this framing, but it defaulted to the same fixed white-cyan
+        // glow on every clone — tinting its emissive to the bot's own
+        // accent color is what actually makes 5 bots read as distinct
+        // instead of "one bot, five hats" (accessories were the only thing
+        // differing before this).
+        if (mats.face) mats.face.emissive.setHex(look.blue);
         setMaterialInstant(mats, look.material);
         applyAccessoryLook(look, clone);
         clone.userData.phase = i * 1.7 + 0.6; // desyncs the idle bob per bot
         clone.userData.scaleVal = 0;
         clone.userData.scaleVel = 0;
         clone.userData.mats = mats;
-        clone.userData.lookIndex = 0;
-        clone.userData.swapTimer = i * 1.4; // staggers each bot's first swap too
         clone.userData.popScale = 1;
         clone.userData.popScaleVel = 0;
         clone.visible = false;
@@ -308,27 +310,14 @@ function updateExtraBots(dt, active, centerX, centerY) {
         if (s < 0.01 && !active) { bot.visible = false; return; }
         bot.visible = true;
 
-        // Each bot swaps between its primary and alt look on its own clock
-        // (independent frequency, independent phase) with the same squash
-        // pop the main bot uses when the user changes its outfit — this is
-        // what makes the lineup feel like five individually-animated bots
-        // rather than one look cloned four times.
+        // Previously each bot swapped between a primary and alt look on its
+        // own clock — reported back as the opposite of what "5 individual
+        // bots" should read as: instead of five bots with a stable, punchy,
+        // recognizable identity, they kept quietly turning into each other.
+        // Each bot now keeps its one assigned EXTRA_BOT_LOOKS look for good;
+        // individuality now comes entirely from the per-bot bob/turn motion
+        // below plus the (now more saturated) fixed colors themselves.
         const motion = EXTRA_BOT_MOTION[i];
-        if (active) {
-            bot.userData.swapTimer += dt;
-            if (bot.userData.swapTimer > motion.swapEvery) {
-                bot.userData.swapTimer = 0;
-                bot.userData.lookIndex = 1 - bot.userData.lookIndex;
-                const look = bot.userData.lookIndex === 0 ? EXTRA_BOT_LOOKS[i] : EXTRA_BOT_ALT_LOOKS[i];
-                const mats = bot.userData.mats;
-                if (mats.base) mats.base.color.setHex(look.body);
-                if (mats.blue) mats.blue.color.setHex(look.blue);
-                if (mats.sides) mats.sides.color.setHex(look.sides);
-                setMaterialInstant(mats, look.material);
-                applyAccessoryLook(look, bot);
-                bot.userData.popScaleVel -= 3.4;
-            }
-        }
         bot.userData.popScaleVel += (260 * (1 - bot.userData.popScale) - 15 * bot.userData.popScaleVel) * dt;
         bot.userData.popScale += bot.userData.popScaleVel * dt;
 
@@ -495,21 +484,23 @@ function init() {
     // Key intensity goes up but ambient goes DOWN at the same time, so the
     // lit face of the bot gets punchier highlights while the shadow side
     // stays genuinely dark instead of just uniformly dimmer.
-    const dirLight = new THREE.DirectionalLight(0xfff4e0, 1.1);
+    // Pulled back again from a previous pass (key 1.1/ambient 0.11/exposure
+    // 1.02/bloom 0.5@threshold 0.76): that combination was reported back as
+    // "all colors are pale and washed out" — a lower bloom threshold makes
+    // MORE of the frame bloom, and bloom desaturates whatever it touches
+    // toward white, which fights directly against "punchier colors".
+    // Brightness was never really the problem; saturation/contrast was.
+    const dirLight = new THREE.DirectionalLight(0xfff4e0, 1.0);
     dirLight.position.set(100, 200, 50);
     scene.add(dirLight);
 
-    // Slightly raised from 0.07: at near-zero ambient, the shadow side of
-    // the head lost enough form to read as "murky" rather than deliberately
-    // moody — this keeps real contrast (still far below the key light)
-    // while the dark side stays legible instead of crushing to pure black.
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.11);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.08);
     scene.add(ambientLight);
 
     // Rim/kicker light from behind-and-above: puts a bright edge along the
     // top/back of the head so the bot's outline reads clearly against black
     // even where the front key light doesn't reach.
-    const rimLight = new THREE.DirectionalLight(0x8fd6ff, 1.9);
+    const rimLight = new THREE.DirectionalLight(0x8fd6ff, 1.7);
     rimLight.position.set(-120, 160, -180);
     scene.add(rimLight);
 
@@ -530,12 +521,16 @@ function init() {
     accentLight.position.set(-60, 40, 200);
     scene.add(accentLight);
 
-    renderer.toneMappingExposure = 1.02;
+    renderer.toneMappingExposure = 0.96;
 
     // Composer
     composer = new THREE.EffectComposer(renderer);
     composer.addPass(new THREE.RenderPass(scene, camera));
-    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.5, 0.45, 0.76);
+    // Tighter and higher-threshold than before: strength 0.5@threshold 0.76
+    // bloomed too much of the frame, washing saturated body colors toward
+    // white instead of reading as punchy. Only the genuinely brightest
+    // points (eye glow, specular highlights) should bloom now.
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.36, 0.4, 0.84);
     composer.addPass(bloomPass);
 
     // Real PBR maps, same set the app itself uses (FBX-embedded texture refs
@@ -576,6 +571,7 @@ function init() {
                         color: 0xffffff, roughness: 0.15, metalness: 0.6,
                         clearcoat: 0.7, clearcoatRoughness: 0.08
                     });
+                    nm.name = 'wheelbot_face'; // kept identifiable post-clone(); see getBodyMats
                 } else if (name.includes('body_blue')) {
                     nm = new THREE.MeshPhysicalMaterial({
                         color: 0x2a4fd6, normalMap: normalMap, metalnessMap: metalnessMap,
@@ -862,10 +858,10 @@ function animate() {
                 applyAccessoryLook(look);
                 triggerAccessoryPop();
             }
-            bodyBaseMat.color.lerp(targetColor.body, 0.04);
-            bodyBlueMat.color.lerp(targetColor.blue, 0.04);
-            if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.04);
-            lerpMaterialTo(bodyMats, targetMaterialName, 0.05);
+            bodyBaseMat.color.lerp(targetColor.body, 0.07);
+            bodyBlueMat.color.lerp(targetColor.blue, 0.07);
+            if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.07);
+            lerpMaterialTo(bodyMats, targetMaterialName, 0.08);
         } else if (bodyBaseMat && bodyBlueMat) {
             // Outside the customization section, ease back to the default
             // look (and reset the cycle) so later sections ("Federleicht",
