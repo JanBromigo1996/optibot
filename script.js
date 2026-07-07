@@ -10,13 +10,14 @@ const observer = new IntersectionObserver((entries) => {
             entry.target.classList.add('visible');
         }
     });
-}, { threshold: 0.01 });
+}, { threshold: 0.01, rootMargin: '0px 0px 50px 0px' });
 
 document.querySelectorAll('.slide-up').forEach(el => observer.observe(el));
 
 // Three.js Setup
 let scene, camera, renderer, composer, bloomPass, robot, mixer;
 let bodyBaseMat, bodyBlueMat, bodySidesMat, accentLight;
+let mainFaceController;
 const clock = new THREE.Clock();
 
 // Page-wide design elements (progress bar, ambient color wash, hero scroll
@@ -60,7 +61,7 @@ const VERTICAL_BIAS = 0.21;
 // higher than assumed) ended up ~0.15 of the frame higher than intended,
 // squarely back in the text.
 const HEAD_OFFSET = 70;
-function withBias(camPosZ, robotY) { return robotY + HEAD_OFFSET + camPosZ * VERTICAL_BIAS; }
+function withBias(camPosZ, robotY) { return robotY + HEAD_OFFSET; }
 
 const RAW_KEYFRAMES = [
     // hero — centered under the headline. An earlier pass (z=1700) was
@@ -72,24 +73,24 @@ const RAW_KEYFRAMES = [
     // larger while still clearing the badge with real margin, verified at
     // 700/900/1080px viewport heights (mobile handled separately by
     // MOBILE_KEYFRAME).
-    { camPos: [0, 0, 1200], robotX: 0, robotY: -185, rotY: 0 },
+    { camPos: [0, 0, 1200], robotX: 0, robotY: -115, rotY: 0, camLookYOverride: 240 },
     // smart engine — text on the left, bot drifts into the right half.
     // Swing kept gentle (was ±92 / ±0.55, now ±65 / ±0.32) so the handoff
     // to the next section reads as a drift, not a disorienting cross-spin.
-    { camPos: [0, 0, 420], robotX: 65, robotY: -95, rotY: 0.32 },
+    { camPos: [0, 0, 420], robotX: 65, robotY: -25, rotY: 0.32 },
     // customization — text on the right, bot drifts into the left half
-    { camPos: [0, 0, 420], robotX: -65, robotY: -95, rotY: -0.32 },
+    { camPos: [0, 0, 420], robotX: -65, robotY: -25, rotY: -0.32 },
     // multi-bot lineup — pulled back so all five fit in frame; the main bot
     // is the middle of the lineup, four clones fan out either side of it
-    { camPos: [0, 0, 1000], robotX: 0, robotY: -110, rotY: 0 },
+    { camPos: [0, 0, 1000], robotX: 0, robotY: -40, rotY: 0 },
     // stats display — text on the left, bot (showing the display, not eyes)
     // drifts into the right half, framed a bit closer so the display reads
-    { camPos: [0, 0, 360], robotX: 60, robotY: -80, rotY: 0.22 },
+    { camPos: [0, 0, 360], robotX: 60, robotY: -10, rotY: 0.22 },
     // lightweight — this section's text is centered (no side spacer to slot
     // into), so instead of competing for the same middle of the frame the
     // bot pulls back, rises, and shrinks toward the top — a small, distant
     // presence above the copy rather than sitting behind/through it
-    { camPos: [0, 0, 640], robotX: 0, robotY: -20, rotY: 0.12, camLookYOverride: 95 },
+    { camPos: [0, 0, 640], robotX: 0, robotY: 50, rotY: 0.12, camLookYOverride: 95 },
     // download — pulled back further and low: this section stacks a link,
     // a button, AND a meta line above the bot. camPos.z=700 measured out to
     // the bot's head-top landing at screen-y≈580 (verified via direct NDC
@@ -97,7 +98,7 @@ const RAW_KEYFRAMES = [
     // squarely on top of the meta text and the link below it. Pulling back
     // to 1100 (the "distance" lever — see withBias) drops head-top to
     // ≈620, clear of the meta line's bottom (~605) with real margin.
-    { camPos: [0, 0, 1100], robotX: 0, robotY: -260, rotY: 0 },
+    { camPos: [0, 0, 1100], robotX: 0, robotY: -190, rotY: 0, camLookYOverride: 80 },
 ];
 const KEYFRAMES = RAW_KEYFRAMES.map(k => ({
     camPos: [k.camPos[0], k.camPos[1], k.camPos[2]],
@@ -161,6 +162,35 @@ function applyAccessoryLook(look, target) {
 let baseRobotScale = 1;
 let popScale = 1, popScaleVel = 0;
 let popKick = 0, popKickVel = 0;
+
+function updateAccessoryPhysics(robotObj, jiggleY, popKick) {
+    robotObj.traverse(c => {
+        if (c.name.startsWith('Acessory_')) {
+            if (!c.userData.basePos) {
+                c.userData.basePos = c.position.clone();
+                c.userData.baseRot = c.rotation.clone();
+            }
+            if (c.name.includes('Ear')) {
+                const flop = jiggleY * 0.005 + popKick * 0.5;
+                const sign = c.name.includes('Right') ? -1 : 1;
+                c.rotation.z = c.userData.baseRot.z + flop * sign;
+            } else if (c.name.includes('Antenna')) {
+                const bend = jiggleY * 0.003 - Math.abs(popKick)*0.3;
+                c.rotation.x = c.userData.baseRot.x + bend;
+                c.rotation.z = c.userData.baseRot.z + popKick * 1.2;
+            } else if (c.name.includes('Witchhat')) {
+                const bounce = Math.max(0, -jiggleY * 0.1);
+                c.position.y = c.userData.basePos.y + bounce;
+                c.rotation.z = c.userData.baseRot.z + popKick * 0.5;
+            } else if (c.name.includes('Glasses')) {
+                const lagY = jiggleY * 0.05;
+                c.position.y = c.userData.basePos.y - lagY;
+                c.position.z = c.userData.basePos.z + Math.abs(lagY)*0.5;
+            }
+        }
+    });
+}
+
 function triggerAccessoryPop() {
     popScaleVel -= 3.4;
     popKickVel += (Math.random() - 0.5) * 2.2;
@@ -310,13 +340,20 @@ function createExtraBots() {
         if (mats.base) mats.base.color.setHex(look.body);
         if (mats.blue) mats.blue.color.setHex(look.blue);
         if (mats.sides) mats.sides.color.setHex(look.sides);
-        // The face screen is by far the most eye-catching part of the head
-        // at this framing, but it defaulted to the same fixed white-cyan
-        // glow on every clone — tinting its emissive to the bot's own
-        // accent color is what actually makes 5 bots read as distinct
-        // instead of "one bot, five hats" (accessories were the only thing
-        // differing before this).
-        if (mats.face) mats.face.emissive.setHex(look.blue);
+
+        const fc = new FaceController();
+        const emotions = ['joy', 'sadness', 'anger', 'glitch', 'heart', 'neutral'];
+        fc.currentEmotion = emotions[i % emotions.length];
+        clone.userData.faceController = fc;
+        
+        if (mats.face) {
+            mats.face.emissive.setHex(look.blue);
+            mats.face.map = fc.faceTex;
+            mats.face.emissiveMap = fc.faceTex;
+        }
+        if (mats.base) mats.base.color.setHex(look.body);
+        if (mats.blue) mats.blue.color.setHex(look.blue);
+        if (mats.sides) mats.sides.color.setHex(look.sides);
         setMaterialInstant(mats, look.material);
         applyAccessoryLook(look, clone);
         clone.userData.phase = i * 1.7 + 0.6; // desyncs the idle bob per bot
@@ -366,6 +403,8 @@ function updateExtraBots(dt, active, centerX, centerY) {
         bot.position.x = centerX + OFFSETS[i] * Math.min(1, s);
         bot.position.y = centerY + Math.sin(now * motion.bobFreq + bot.userData.phase) * motion.bobAmp;
         bot.rotation.y = Math.sin(now * motion.turnFreq + bot.userData.phase) * motion.turnAmp;
+        bot.rotation.z = bot.userData.popKick || 0;
+        updateAccessoryPhysics(bot, 0, bot.userData.popKick || 0);
     });
 }
 
@@ -374,175 +413,219 @@ function updateExtraBots(dt, active, centerX, centerY) {
 // (blink + a slow wandering gaze) instead of one static drawn-once frame,
 // which read as "dead" with no motion at all in the face.
 // ------------------------------------------------------------------
-let faceCanvas, faceCtx, faceTex;
-let nextBlinkAt = 0, blinkStart = -9999;
-const BLINK_MS = 150;
-let gazeX = 0, gazeY = 0, gazeTargetX = 0, gazeTargetY = 0, nextGazeAt = 0;
+class FaceController {
+    constructor() {
+        this.faceCanvas = document.createElement('canvas');
+        this.faceCanvas.width = this.faceCanvas.height = 1024;
+        this.faceCtx = this.faceCanvas.getContext('2d');
+        this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
+        this.faceTex.encoding = THREE.sRGBEncoding;
 
-function initFaceTexture() {
-    faceCanvas = document.createElement('canvas');
-    faceCanvas.width = faceCanvas.height = 1024;
-    faceCtx = faceCanvas.getContext('2d');
-    faceTex = new THREE.CanvasTexture(faceCanvas);
-    faceTex.encoding = THREE.sRGBEncoding;
-    drawFace(0, 0, 0);
-    return faceTex;
-}
+        const now = performance.now();
+        this.nextBlinkAt = now + 1000 + Math.random() * 4000;
+        this.blinkStart = -9999;
+        this.BLINK_MS = 150;
+        this.gazeX = 0;
+        this.gazeY = 0;
+        this.gazeTargetX = 0;
+        this.gazeTargetY = 0;
+        this.nextGazeAt = now + 500 + Math.random() * 2000;
 
-// scaleX / scaleY: spring-driven eye expression scale (see eyeSX/SY above).
-// Kept as separate parameters rather than globals so drawFace stays a pure
-// function and can be called from initFaceTexture without a scale value.
-function drawFace(lidCoverage, offsetX, offsetY, scaleX = 1, scaleY = 1) {
-    const ctx = faceCtx;
-    ctx.fillStyle = '#04140a';
-    ctx.fillRect(0, 0, 1024, 1024);
+        this.currentEmotion = 'neutral';
 
-    // Base eye dimensions before expression scaling.
-    // 210px is the "neutral" squircle size tuned to the face canvas resolution.
-    const baseW = 210, baseH = 210;
-    const eyeW = baseW * Math.max(0.3, scaleX);
-    // scaleY and lidCoverage both reduce the height — multiply them so a
-    // surprised (scaleY=0.75) mid-blink (lidCoverage=0.5) gives 0.75×0.5
-    // of base height, not just one of them.
-    const eyeH = Math.max(10, baseH * Math.max(0.05, scaleY) * (1 - lidCoverage));
-    const eyeY = 512 - eyeH / 2;
-    // Glow scales with openness — wider brighter eyes pop more
-    const glow = 55 + scaleY * 30 + eyeW * 0.05;
+        this.displayPageIndex = 0;
+        this.displayPageTimer = 0;
+        this.DISPLAY_PAGES = ['face', 'ram', 'cpu', 'gpu'];
+        this.DISPLAY_PAGE_HOLD = 1.8;
 
-    [364.5, 659.5].forEach(cx => {
-        const ex = cx - eyeW / 2 + offsetX;
-        const ey = eyeY + offsetY;
-        const radius = Math.min(eyeW / 2, eyeH / 2, 72);
+        this.drawFace(0, 0, 0);
+    }
 
-        // Outer glow
+    drawFace(lidCoverage, offsetX, offsetY, scaleX = 1, scaleY = 1) {
+        const ctx = this.faceCtx;
+        ctx.fillStyle = '#04140a';
+        ctx.fillRect(0, 0, 1024, 1024);
+
+        const baseW = 210, baseH = 210;
+        const eyeW = baseW * Math.max(0.3, scaleX);
+        
+        const ep = getEmotionParams(this.currentEmotion);
+        const effScaleY = scaleY * ep.scaleY;
+        const eyeH = Math.max(10, baseH * Math.max(0.05, effScaleY) * (1 - lidCoverage));
+        const eyeY = 512 - eyeH / 2;
+        
+        const glow = 55 + effScaleY * 30 + eyeW * 0.05;
+
+        const now = performance.now();
+        
+        [364.5, 659.5].forEach((cx, idx) => {
+            const isRight = idx === 1;
+            const ex = cx - eyeW / 2 + offsetX;
+            const ey = eyeY + offsetY;
+            
+            ctx.save();
+            ctx.shadowColor = 'rgba(25,242,255,0.9)';
+            ctx.shadowBlur = glow;
+            ctx.fillStyle = '#19f2ff';
+            
+            if (ep.isGlitch) {
+                ctx.shadowBlur = 0;
+                const bands = 5;
+                for(let i=0; i<bands; i++) {
+                    const bY = ey + (i/bands)*eyeH;
+                    const bH = eyeH/bands;
+                    const shiftX = (Math.random()-0.5)*20;
+                    ctx.fillStyle = i%2===0 ? '#19f2ff' : '#ff0055';
+                    ctx.beginPath();
+                    ctx.roundRect(ex + shiftX, bY, eyeW, bH, 10);
+                    ctx.fill();
+                }
+            } else if (ep.isHeart) {
+                const centerX = cx + offsetX;
+                const centerY = 512 + offsetY;
+                const hw = eyeW*0.6, hh = eyeH*0.6;
+                ctx.beginPath();
+                const topY = centerY - hh*0.5;
+                ctx.moveTo(centerX, topY);
+                ctx.bezierCurveTo(centerX, topY - hh*0.5, centerX - hw, topY - hh*0.5, centerX - hw, topY);
+                ctx.bezierCurveTo(centerX - hw, topY + hh*0.5, centerX, topY + hh*0.8, centerX, centerY + hh*0.8);
+                ctx.bezierCurveTo(centerX, topY + hh*0.8, centerX + hw, topY + hh*0.5, centerX + hw, topY);
+                ctx.bezierCurveTo(centerX + hw, topY - hh*0.5, centerX, topY - hh*0.5, centerX, topY);
+                ctx.fill();
+            } else {
+                ctx.beginPath();
+                const wobbleX = Math.sin(now * 0.003 + idx) * 8;
+                const wobbleY = Math.cos(now * 0.002 + idx) * 8;
+                
+                const rx = eyeW / 2;
+                const ry = eyeH / 2;
+                const skew = (isRight ? -ep.skewX : ep.skewX) * rx;
+                const centerX = cx + offsetX;
+                const centerY = 512 + offsetY;
+                
+                const pTL = { x: centerX - rx + skew + wobbleX, y: centerY - ry + ep.curveTop*ry + wobbleY };
+                const pTR = { x: centerX + rx + skew + wobbleX, y: centerY - ry + ep.curveTop*ry + wobbleY };
+                const pBR = { x: centerX + rx - skew + wobbleX, y: centerY + ry + ep.curveBottom*ry + wobbleY };
+                const pBL = { x: centerX - rx - skew + wobbleX, y: centerY + ry + ep.curveBottom*ry + wobbleY };
+                
+                ctx.moveTo(centerX - rx + wobbleX, centerY + wobbleY);
+                ctx.quadraticCurveTo(pTL.x, pTL.y, centerX + wobbleX, centerY - ry + ep.curveTop*ry + wobbleY);
+                ctx.quadraticCurveTo(pTR.x, pTR.y, centerX + rx + wobbleX, centerY + wobbleY);
+                ctx.quadraticCurveTo(pBR.x, pBR.y, centerX + wobbleX, centerY + ry + ep.curveBottom*ry + wobbleY);
+                ctx.quadraticCurveTo(pBL.x, pBL.y, centerX - rx + wobbleX, centerY + wobbleY);
+                ctx.fill();
+            }
+            ctx.restore();
+
+            if (scaleY > 1.0 && eyeH > 60 && !ep.isGlitch && !ep.isHeart) {
+                const hlW = eyeW * 0.22, hlH = eyeH * 0.28;
+                ctx.save();
+                ctx.globalAlpha = Math.min(0.85, (scaleY - 1.0) * 4.5);
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = 'rgba(255,255,255,0.6)';
+                ctx.shadowBlur = 12;
+                ctx.beginPath();
+                ctx.roundRect(ex + eyeW * 0.58, ey + eyeH * 0.10, hlW, hlH, hlH / 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            if (eyeH > 40 && !ep.isGlitch && !ep.isHeart) {
+                const pupilW = eyeW * 0.55, pupilH = eyeH * 0.55;
+                ctx.save();
+                ctx.globalAlpha = 0.25;
+                ctx.fillStyle = '#05a8c0';
+                ctx.beginPath();
+                const px = cx - pupilW / 2 + offsetX;
+                const py = ey + (eyeH - pupilH) / 2;
+                const wobbleX = Math.sin(now * 0.003 + idx) * 8;
+                const wobbleY = Math.cos(now * 0.002 + idx) * 8;
+                ctx.roundRect(px + wobbleX*0.5, py + wobbleY*0.5, pupilW, pupilH, Math.min(pupilW, pupilH) * 0.45);
+                ctx.fill();
+                ctx.restore();
+            }
+        });
+    }
+
+    drawStatPage(label, value, color) {
+        const ctx = this.faceCtx;
+        ctx.fillStyle = '#04140a';
+        ctx.fillRect(0, 0, 1024, 1024);
+        ctx.textAlign = 'center';
         ctx.save();
-        ctx.shadowColor = 'rgba(25,242,255,0.9)';
-        ctx.shadowBlur = glow;
-        ctx.fillStyle = '#19f2ff';
-        ctx.beginPath();
-        ctx.roundRect(ex, ey, eyeW, eyeH, radius);
-        ctx.fill();
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 44;
+        ctx.fillStyle = color;
+        ctx.font = '800 250px -apple-system, "Segoe UI", sans-serif';
+        ctx.fillText(Math.round(value) + '%', 512, 470);
         ctx.restore();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.65)';
+        ctx.font = '600 46px -apple-system, "Segoe UI", sans-serif';
+        ctx.fillText(label, 512, 555);
 
-        // Specular highlight — a small bright streak in the top-right corner
-        // of each eye that only appears when the eyes are open wide (scaleY>1),
-        // giving them a moist/alive look (same trick 2D animators use for eyes).
-        if (scaleY > 1.0 && eyeH > 60) {
-            const hlW = eyeW * 0.22, hlH = eyeH * 0.28;
-            ctx.save();
-            ctx.globalAlpha = Math.min(0.85, (scaleY - 1.0) * 4.5);
-            ctx.fillStyle = '#ffffff';
-            ctx.shadowColor = 'rgba(255,255,255,0.6)';
-            ctx.shadowBlur = 12;
-            ctx.beginPath();
-            ctx.roundRect(ex + eyeW * 0.58, ey + eyeH * 0.10, hlW, hlH, hlH / 2);
-            ctx.fill();
-            ctx.restore();
+        const barW = 660, barH = 26, segs = 22, gap = 6;
+        const bx = 512 - barW / 2, by = 615;
+        const segW = (barW - gap * (segs - 1)) / segs;
+        const filled = Math.round((value / 100) * segs);
+        for (let i = 0; i < segs; i++) {
+            ctx.fillStyle = i < filled ? color : 'rgba(255,255,255,0.1)';
+            ctx.fillRect(bx + i * (segW + gap), by, segW, barH);
+        }
+    }
+
+    update(now, dt, statsActive, scaleX = 1, scaleY = 1) {
+        if (statsActive) {
+            this.displayPageTimer += dt;
+            if (this.displayPageTimer > this.DISPLAY_PAGE_HOLD) {
+                this.displayPageTimer = 0;
+                this.displayPageIndex = (this.displayPageIndex + 1) % this.DISPLAY_PAGES.length;
+            }
+        } else if (this.displayPageIndex !== 0 || this.displayPageTimer !== 0) {
+            this.displayPageIndex = 0;
+            this.displayPageTimer = 0;
         }
 
-        // Inner pupil — a slightly darker, smaller squircle centered inside the
-        // eye. Reads as depth/iris at close framing (stats section close-up).
-        if (eyeH > 40) {
-            const pupilW = eyeW * 0.55, pupilH = eyeH * 0.55;
-            ctx.save();
-            ctx.globalAlpha = 0.25;
-            ctx.fillStyle = '#05a8c0';
-            ctx.beginPath();
-            ctx.roundRect(cx - pupilW / 2 + offsetX, ey + (eyeH - pupilH) / 2, pupilW, pupilH, Math.min(pupilW, pupilH) * 0.45);
-            ctx.fill();
-            ctx.restore();
+        if (now > this.nextBlinkAt) {
+            this.blinkStart = now;
+            this.nextBlinkAt = now + 2500 + Math.random() * 5000;
         }
-    });
-}
 
-// Live-stats demo pages ("Immer im Blick") — the real app swipes between
-// Face/CPU/RAM/GPU pages on the same physical display; this is a simplified
-// version with the same big-bold-number layout, driven by simulated (not
-// real, this is a marketing page, not the app) gently oscillating values.
-const DISPLAY_PAGES = ['face', 'ram', 'cpu', 'gpu'];
-let displayPageIndex = 0, displayPageTimer = 0, pageBlend = 0;
-const DISPLAY_PAGE_HOLD = 1.8;
-
-function drawStatPage(ctx, label, value, color) {
-    ctx.fillStyle = '#04140a';
-    ctx.fillRect(0, 0, 1024, 1024);
-    ctx.textAlign = 'center';
-    ctx.save();
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 44;
-    ctx.fillStyle = color;
-    ctx.font = '800 250px -apple-system, "Segoe UI", sans-serif';
-    ctx.fillText(Math.round(value) + '%', 512, 470);
-    ctx.restore();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(255,255,255,0.65)';
-    ctx.font = '600 46px -apple-system, "Segoe UI", sans-serif';
-    ctx.fillText(label, 512, 555);
-
-    const barW = 660, barH = 26, segs = 22, gap = 6;
-    const bx = 512 - barW / 2, by = 615;
-    const segW = (barW - gap * (segs - 1)) / segs;
-    const filled = Math.round((value / 100) * segs);
-    for (let i = 0; i < segs; i++) {
-        ctx.fillStyle = i < filled ? color : 'rgba(255,255,255,0.1)';
-        ctx.fillRect(bx + i * (segW + gap), by, segW, barH);
-    }
-}
-
-// scaleX/Y: the current spring-driven eye expression scales (eyeSX/SY)
-// passed in from animate() — updateFace is called at the end of the loop
-// after those springs have already been ticked.
-function updateFace(now, dt, statsActive, scaleX = 1, scaleY = 1) {
-    if (statsActive) {
-        displayPageTimer += dt;
-        if (displayPageTimer > DISPLAY_PAGE_HOLD) {
-            displayPageTimer = 0;
-            displayPageIndex = (displayPageIndex + 1) % DISPLAY_PAGES.length;
+        let lidCoverage = 0;
+        if (now - this.blinkStart < this.BLINK_MS) {
+            const bt = (now - this.blinkStart) / this.BLINK_MS;
+            lidCoverage = bt < 0.4 ? bt / 0.4 : 1 - (bt - 0.4) / 0.6;
+            lidCoverage = Math.max(0, Math.min(1, lidCoverage));
         }
-    } else if (displayPageIndex !== 0 || displayPageTimer !== 0) {
-        displayPageIndex = 0;
-        displayPageTimer = 0;
-    }
 
-    if (now > nextBlinkAt) {
-        blinkStart = now;
-        // Blink faster when excited (high eyeSY), slower when calm
-        nextBlinkAt = now + (1800 + Math.random() * 2800) / Math.max(0.6, scaleY);
-    }
-    const t = now - blinkStart;
-    let lidCoverage = 0;
-    if (t >= 0 && t < BLINK_MS) {
-        const half = BLINK_MS / 2;
-        lidCoverage = t < half ? (t / half) : (1 - (t - half) / half);
-    }
+        if (now > this.nextGazeAt) {
+            if (Math.random() > 0.6) {
+                this.gazeTargetX = 0;
+                this.gazeTargetY = 0;
+            } else {
+                this.gazeTargetX = (Math.random() - 0.5) * 60;
+                this.gazeTargetY = (Math.random() - 0.5) * 40;
+            }
+            this.nextGazeAt = now + 1000 + Math.random() * 3000;
+        }
+        
+        this.gazeX += (this.gazeTargetX - this.gazeX) * 12 * dt;
+        this.gazeY += (this.gazeTargetY - this.gazeY) * 12 * dt;
 
-    if (now > nextGazeAt) {
-        gazeTargetX = (Math.random() - 0.5) * 0.75;
-        gazeTargetY = (Math.random() - 0.5) * 0.4;
-        // Eyes dart quickly to new position (0.14 factor per frame at 60fps),
-        // then ease in slowly — mimics the saccade + smooth-pursuit split of
-        // real eye movement rather than a single constant lerp speed.
-        nextGazeAt = now + 1200 + Math.random() * 2200;
+        if (statsActive && this.displayPageIndex > 0) {
+            const pageName = this.DISPLAY_PAGES[this.displayPageIndex];
+            const wobble = Math.sin(now * 0.005) * 0.5 + 0.5;
+            const value = Math.max(8, Math.min(96, 52 + wobble * 34));
+            const color = pageName === 'ram' ? '#19f2ff' : pageName === 'cpu' ? '#ffb84d' : '#ff5ec4';
+            const label = pageName === 'ram' ? 'ARBEITSSPEICHER' : pageName === 'cpu' ? 'PROZESSOR' : 'GRAFIKKARTE';
+            this.drawStatPage(label, value, color);
+        } else {
+            this.drawFace(lidCoverage, this.gazeX, this.gazeY, scaleX, scaleY);
+        }
+        this.faceTex.needsUpdate = true;
     }
-    // Dart phase: snap most of the way there in the first 80ms after a new
-    // target is set (high lerp factor), then ease the remaining distance slowly.
-    const gazeAge = now - (nextGazeAt - (1200 + 2200 / 2)); // approximate
-    const gazeFactor = gazeAge < 80 ? 0.22 : 0.04;
-    gazeX += (gazeTargetX - gazeX) * gazeFactor;
-    gazeY += (gazeTargetY - gazeY) * gazeFactor;
-
-    const mode = DISPLAY_PAGES[displayPageIndex];
-    if (mode === 'face') {
-        drawFace(lidCoverage, gazeX * 38, gazeY * 26, scaleX, scaleY);
-    } else {
-        const wobble = Math.sin(now * 0.0006 + (mode === 'ram' ? 0 : mode === 'cpu' ? 2.1 : 4.2));
-        const value = Math.max(8, Math.min(96, 52 + wobble * 34));
-        const color = mode === 'ram' ? '#19f2ff' : mode === 'cpu' ? '#ffb84d' : '#ff5ec4';
-        const label = mode === 'ram' ? 'ARBEITSSPEICHER' : mode === 'cpu' ? 'PROZESSOR' : 'GRAFIKKARTE';
-        drawStatPage(faceCtx, label, value, color);
-    }
-    faceTex.needsUpdate = true;
 }
+
 
 function init() {
     const container = document.getElementById('webgl-container');
@@ -641,7 +724,7 @@ function init() {
     const normalMap = texLoader.load('Textures/WheelBot_Body_Normal.png');
     const metalnessMap = texLoader.load('Textures/WheelBot_Body_Metallic.png');
 
-    initFaceTexture();
+    mainFaceController = new FaceController();
 
     // Load Model
     const loader = new THREE.FBXLoader();
@@ -666,7 +749,7 @@ function init() {
                     });
                 } else if (name === 'wheelbot_face') {
                     nm = new THREE.MeshPhysicalMaterial({
-                        map: faceTex, emissiveMap: faceTex,
+                        map: mainFaceController.faceTex, emissiveMap: mainFaceController.faceTex,
                         emissive: 0xffffff, emissiveIntensity: 1.4,
                         color: 0xffffff, roughness: 0.15, metalness: 0.6,
                         clearcoat: 0.7, clearcoatRoughness: 0.08
@@ -758,39 +841,37 @@ const curCam = { pos: new THREE.Vector3(0, 60, 430), look: new THREE.Vector3(0, 
 let curRobotX = 0, curRobotY = KEYFRAMES[0].robotY, curRotY = 0;
 
 function getSectionProgress() {
-    // Which keyframe pair we're between, and how far — driven by each
-    // section's own position in the document rather than a raw scroll-pixel
-    // ratio, so it stays correct regardless of section heights.
-    //
-    // Real bug fixed here: this used to measure the *viewport's own center*
-    // against section boundaries. Since each section is roughly one
-    // viewport-height tall, that means the moment a section merely scrolls
-    // into view at all, the viewport's center is already sitting near that
-    // section's own midpoint — so at scrollY=0 (page freshly loaded, hero
-    // fully in view, no scrolling done at all) this reported progress≈0.5,
-    // i.e. already half-blended toward the *next* keyframe before the user
-    // touched anything. That's exactly why the bot could render on top of
-    // the hero text at rest: it was never actually showing hero's own
-    // keyframe, always some blend toward "smart". Using the viewport's own
-    // *top* edge instead means progress is exactly N at the moment section N
-    // first fills the viewport from the top, and reaches N+1 only once
-    // you've scrolled a full section further — the mapping actually intended.
     const sections = SECTION_IDS.map(id => document.getElementById(id)).filter(Boolean);
     if (sections.length === 0) return 0;
-    const scrollTop = window.scrollY;
+    
+    // We map progress=N to the exact moment the CENTER of section N hits the CENTER of the screen.
+    // This perfectly aligns the 3D bot's keyframes with the user's reading focus.
+    const scrollCenter = window.scrollY + window.innerHeight * 0.5;
+    
+    // Handle edge case: if we are above the center of the first section, pin to 0.
+    const firstRect = sections[0].getBoundingClientRect();
+    const firstCenter = firstRect.top + firstRect.height / 2 + window.scrollY;
+    if (scrollCenter <= firstCenter) return 0;
+    
     let idx = 0;
     for (let i = 0; i < sections.length; i++) {
         const rect = sections[i].getBoundingClientRect();
-        const top = rect.top + window.scrollY;
-        if (scrollTop >= top) idx = i;
+        const center = rect.top + rect.height / 2 + window.scrollY;
+        if (scrollCenter >= center) idx = i;
     }
+    
     const cur = sections[idx];
     const next = sections[idx + 1];
     if (!next) return idx;
-    const curTop = cur.getBoundingClientRect().top + window.scrollY;
-    const nextTop = next.getBoundingClientRect().top + window.scrollY;
-    const span = Math.max(1, nextTop - curTop);
-    const frac = Math.max(0, Math.min(1, (scrollTop - curTop) / span));
+    
+    const curRect = cur.getBoundingClientRect();
+    const nextRect = next.getBoundingClientRect();
+    const curCenter = curRect.top + curRect.height / 2 + window.scrollY;
+    const nextCenter = nextRect.top + nextRect.height / 2 + window.scrollY;
+    
+    const span = Math.max(1, nextCenter - curCenter);
+    const frac = Math.max(0, Math.min(1, (scrollCenter - curCenter) / span));
+    
     return idx + frac;
 }
 
@@ -817,14 +898,20 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 // ~603px at the old values, i.e. actually already touching once real text
 // line heights are accounted for). Re-tuned so head-top lands ~635px,
 // a real ~56px clear gap under the badge at a 390x844 viewport.
-const MOBILE_KEYFRAME = { camPos: [0, 240, 1500], camLook: [0, 260, 0], robotX: 0, robotY: -190, rotY: 0.1 };
-// Short desktop windows (e.g. a 1440x700 browser) hit the same text-overlap
-// problem as phones — the hero copy's vertical position is set by CSS
-// padding, not by viewport height, so a shorter window just brings the
-// same fixed-world-position bot closer to the text underneath it. Reusing
-// the phone treatment (smaller, further down) below a height threshold
-// fixes both cases with one keyframe instead of tuning two.
-function isMobileView() { return window.innerWidth < 900 || window.innerHeight < 760; }
+function getResponsiveKeyframe(k) {
+    if (window.innerWidth < 900) {
+        return {
+            camPos: [k.camPos[0], k.camPos[1], Math.max(k.camPos[2], 1500)],
+            camLook: [0, k.camLook[1] + 150, 0],
+            robotX: 0,
+            robotY: k.robotY,
+            rotY: k.rotY * 0.5
+        };
+    } else if (window.innerHeight < 760) {
+        return k;
+    }
+    return k;
+}
 
 function animate() {
     requestAnimationFrame(animate);
@@ -898,12 +985,12 @@ function animate() {
     eyeSX += eyeSXVel * delta;
     eyeSYVel += (180 * (targetSY - eyeSY) - 13 * eyeSYVel) * delta;
     eyeSY += eyeSYVel * delta;
-    const mobile = isMobileView();
     const i0 = Math.max(0, Math.min(KEYFRAMES.length - 1, Math.floor(progress)));
     const i1 = Math.min(KEYFRAMES.length - 1, i0 + 1);
     const t = progress - i0;
-    const k0 = mobile ? MOBILE_KEYFRAME : KEYFRAMES[i0];
-    const k1 = mobile ? MOBILE_KEYFRAME : KEYFRAMES[i1];
+    
+    const k0 = getResponsiveKeyframe(KEYFRAMES[i0]);
+    const k1 = getResponsiveKeyframe(KEYFRAMES[i1]);
 
     const targetCamPos = [
         lerp(k0.camPos[0], k1.camPos[0], t),
@@ -1008,6 +1095,7 @@ function animate() {
         updateAccessoryPop(delta);
         robot.scale.setScalar(baseRobotScale * popScale);
         robot.rotation.z = popKick;
+        updateAccessoryPhysics(robot, jiggleY, popKick);
 
         // Live color/accessory cycle while the "Dein Bot, dein Stil" section
         // is in view — a little squash-and-kick "pop" (see triggerAccessoryPop)
@@ -1081,7 +1169,10 @@ function animate() {
         elScrollHint.style.opacity = progress < 0.12 ? '1' : '0';
     }
 
-    updateFace(performance.now(), delta, statsActive, eyeSX, eyeSY);
+    mainFaceController.update(performance.now(), delta, statsActive, eyeSX, eyeSY);
+    extraBots.forEach(b => {
+        if (b.userData.faceController) b.userData.faceController.update(performance.now(), delta, false, 1, 1);
+    });
     composer.render();
 }
 
