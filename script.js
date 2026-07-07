@@ -463,7 +463,11 @@ function init() {
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
     camera.position.set(0, 60, 430);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    // failIfMajorPerformanceCaveat: false — see isWebGLAvailable() above.
+    // Without it, environments limited to software rendering (no real GPU
+    // passthrough) get refused a context entirely instead of a slower-but-
+    // working one, which is what silently forced the static-fallback path.
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(0x000000, 1); // Solid black for website background
@@ -932,7 +936,20 @@ function animate() {
 function isWebGLAvailable() {
     try {
         const c = document.createElement('canvas');
-        return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl')));
+        // failIfMajorPerformanceCaveat defaults to false in the spec, but
+        // some browsers/configs still refuse a *hardware* context outright
+        // when only software rendering (e.g. SwiftShader) is available and
+        // silently hand back null — which this check, without the flag
+        // made explicit, was reading as "no WebGL at all" and permanently
+        // falling back to the static logo. Explicitly allowing the
+        // performance caveat lets it succeed as a software context instead
+        // — slower, but the real animated scene, not a static placeholder.
+        // This was very likely the actual cause behind repeated "the bot is
+        // tiny, static, and centered" reports: exactly what the fallback's
+        // small logo watermark looks like, on a machine where real WebGL
+        // would have worked fine if we'd just allowed it to be slow.
+        const opts = { failIfMajorPerformanceCaveat: false };
+        return !!(window.WebGLRenderingContext && (c.getContext('webgl', opts) || c.getContext('experimental-webgl', opts)));
     } catch (e) {
         return false;
     }

@@ -17,9 +17,20 @@ body.no-webgl {
         #000;
 }
 body.no-webgl .visual-spacer {
-    background: url('logo.png') center / 120px no-repeat;
-    opacity: 0.5;
+    background: url('logo.png') center / 160px no-repeat;
+    opacity: 0.6;
     filter: drop-shadow(0 0 30px rgba(25,242,255,0.25));
+}
+/* The hero has no .visual-spacer (its layout is centered, not split), so
+   it showed nothing at all in fallback mode — the very first thing a
+   visitor sees would have been just text on black, no mark at all. */
+.hero-fallback-mark { display: none; }
+body.no-webgl .hero-fallback-mark {
+    display: block;
+    width: 140px; height: 140px; margin: 32px auto 0;
+    background: url('logo.png') center / contain no-repeat;
+    opacity: 0.65;
+    filter: drop-shadow(0 0 30px rgba(25,242,255,0.3));
 }
 
 #webgl-container {
