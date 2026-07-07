@@ -717,7 +717,17 @@ function isMobileView() { return window.innerWidth < 900 || window.innerHeight <
 
 function animate() {
     requestAnimationFrame(animate);
-    const delta = Math.min(clock.getDelta(), 0.05);
+    // Two different deltas on purpose. rawDelta is the actual elapsed time —
+    // needed so the camera/robot ease can immediately catch all the way up
+    // after a stall (throttled background tab, remote-desktop/low-power
+    // rendering, a long GC pause) instead of crawling back at a fixed small
+    // step regardless of how long the stall was. The clamped `delta` still
+    // feeds the spring-physics (accessory pop, extra-bot bob) and the
+    // animation mixer, which — unlike the unconditionally-stable exponential
+    // ease — use explicit Euler integration and really can blow up or
+    // overshoot wildly if fed a multi-second dt in one step.
+    const rawDelta = clock.getDelta();
+    const delta = Math.min(rawDelta, 0.05);
     if (mixer) mixer.update(delta);
 
     mouseX += (mouseTargetX - mouseX) * 0.04;
@@ -753,7 +763,7 @@ function animate() {
     // section, reported as "too slow, you miss it." Tightened to a ~0.045s
     // time constant: still smooths out raw per-frame scroll jitter, but
     // tracks fast scrolling closely enough to actually arrive.
-    const ease = 1 - Math.pow(0.000000001, delta); // frame-rate-independent damping
+    const ease = 1 - Math.pow(0.000000001, rawDelta); // frame-rate-independent damping, uncapped so a stalled tab catches up in one step on resume
     curCam.pos.x = lerp(curCam.pos.x, targetCamPos[0], ease);
     curCam.pos.y = lerp(curCam.pos.y, targetCamPos[1], ease);
     curCam.pos.z = lerp(curCam.pos.z, targetCamPos[2], ease);
