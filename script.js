@@ -905,5 +905,54 @@ function animate() {
     composer.render();
 }
 
-init();
-animate();
+// WebGL can genuinely fail to initialize — not just on old hardware, but in
+// any environment that can't hand out real GPU acceleration: virtualized
+// displays, some remote-desktop/screen-sharing sessions, sandboxed contexts.
+// Previously, if THREE.WebGLRenderer's constructor threw there, it happened
+// *inside* init(), which aborted before animate() was ever called — meaning
+// not just the bot but the scroll-progress bar, the ambient glow, and every
+// other per-frame effect silently never started. The page still loaded and
+// scrolled, so nothing looked "broken" in an obvious way, just permanently
+// static — exactly what "the animations don't work" describes from the
+// outside, and exactly the kind of failure automated testing on a machine
+// with working GPU acceleration will never reproduce. Detect this up front
+// and degrade to a real, intentional-looking fallback instead of a silent
+// no-op.
+function isWebGLAvailable() {
+    try {
+        const c = document.createElement('canvas');
+        return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl')));
+    } catch (e) {
+        return false;
+    }
+}
+
+function startFallbackMode() {
+    document.body.classList.add('no-webgl');
+    // The bot itself can't render without WebGL, but everything else that
+    // doesn't depend on it — nav, section reveal-on-scroll, the download
+    // button, the scroll-progress bar — should still work rather than the
+    // whole page reading as dead. This is a tiny independent loop, not the
+    // full animate(), so it has nothing to fail on.
+    function fallbackTick() {
+        requestAnimationFrame(fallbackTick);
+        if (elScrollProgress) {
+            const maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
+            const pct = Math.max(0, Math.min(1, window.scrollY / maxScroll)) * 100;
+            elScrollProgress.style.width = pct + '%';
+        }
+    }
+    fallbackTick();
+}
+
+if (isWebGLAvailable()) {
+    try {
+        init();
+        animate();
+    } catch (e) {
+        console.error('WebGL init failed despite feature detection, falling back:', e);
+        startFallbackMode();
+    }
+} else {
+    startFallbackMode();
+}

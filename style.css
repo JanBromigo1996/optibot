@@ -7,6 +7,21 @@ body {
     overflow-x: hidden;
 }
 
+/* Graceful degrade when WebGL genuinely can't initialize (see script.js
+   isWebGLAvailable/startFallbackMode) — a static, on-brand backdrop instead
+   of a plain black void with an invisible 3D bot that never arrives. */
+body.no-webgl {
+    background:
+        radial-gradient(ellipse 60% 45% at 50% 30%, rgba(10,132,255,0.14), transparent 70%),
+        radial-gradient(ellipse 50% 40% at 50% 80%, rgba(123,47,247,0.10), transparent 70%),
+        #000;
+}
+body.no-webgl .visual-spacer {
+    background: url('logo.png') center / 120px no-repeat;
+    opacity: 0.5;
+    filter: drop-shadow(0 0 30px rgba(25,242,255,0.25));
+}
+
 #webgl-container {
     position: fixed;
     top: 0; left: 0;
