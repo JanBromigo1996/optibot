@@ -193,10 +193,11 @@
             <p>OptiBot beobachtet, welche Programme laufen, und schaltet dein System automatisch in den passenden Modus:</p>
             <ul>
                 <li><b>Play-Modus</b> (magenta): Ein Spiel wurde erkannt. Maximale Leistung, RAM wird freigeräumt, störende Hintergrunddienste pausieren.</li>
-                <li><b>Work-Modus</b> (bernstein): Kreativ- oder Arbeits-Software läuft (z.&nbsp;B. Blender, Adobe, Visual Studio). Volle Leistung für deine Arbeit, Gaming-Launcher werden geschlossen.</li>
+                <li><b>Work-Modus</b> (bernstein): Kreativ- oder Arbeits-Software läuft (z.&nbsp;B. Blender, Adobe, Visual Studio). Volle Leistung für deine Arbeit, Spiele im Hintergrund werden gedrosselt &mdash; nicht geschlossen.</li>
                 <li><b>Auto-Modus</b> (cyan): Alltag. Ausbalanciertes Energieprofil, alle Dienste normal.</li>
             </ul>
-            <p>Während einer Optimierung läuft auf dem Gesichtsdisplay des zuständigen Bots ein Status-Text mit, und die Augenfarbe zeigt jederzeit den aktiven Modus.</p>
+            <p>Während einer Optimierung läuft auf dem Gesichtsdisplay des zuständigen Bots ein Status-Text mit, und die Augenfarbe zeigt jederzeit den aktiven Modus. Es gibt nur eine einzige Erkennung im Hintergrund — alle Bots mit derselben Rolle zeigen deshalb immer denselben Modus, nie widersprüchliche Zustände.</p>
+            <p>Alle Optimierungen sind bewusst <b>nicht-invasiv</b>: OptiBot schließt keine offenen Programme und löscht keine Caches, die gerade benutzt werden. Stattdessen wird Speicher aufgeräumt und die Priorität von Hintergrund-Prozessen angepasst — ein spürbarer Boost, ohne Risiko für ungespeicherte Arbeit.</p>
             <img class="doc-img" src="anleitung_modes.png" alt="Die drei Augenfarben der Smart Engine: Auto (cyan), Work (bernstein), Play (magenta)">
             <div class="tip">💡 Die Smart Engine kannst du im Taskleisten-Menü unter „Automatische Optimierung" jederzeit an- oder abschalten. Über das Menü kannst du jeden Modus auch manuell setzen.</div>
         </section>
@@ -223,6 +224,7 @@
             <ul>
                 <li>Im Studio wählst du oben über die <b>Bot-Tabs</b> aus, welchen Bot du gerade bearbeitest.</li>
                 <li>Mit <span class="kbd">+ Bot</span> / <span class="kbd">− Bot</span> (im Studio oder Taskleisten-Menü) spawnst und entfernst du Bots.</li>
+                <li><b>Bibliothek:</b> Gespeicherte Looks (Profile-Dropdown) lassen sich per <span class="kbd">🚀</span> direkt als neuer Bot auf den Desktop spawnen — praktisch, wenn du einen Look mehrfach verwenden willst.</li>
                 <li>Jeder Bot hat eine <b>Rolle</b> (Auto, Work oder Play): Er reagiert sichtbar, wenn die Smart Engine „seinen" Modus aktiviert — so siehst du auf einen Blick, was dein System gerade macht.</li>
             </ul>
             <img class="doc-img" src="anleitung_multibot.png" alt="Bis zu fünf OptiBots gleichzeitig, jeder mit eigenem Look">
