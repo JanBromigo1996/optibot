@@ -49,8 +49,16 @@ const HEAD_OFFSET = 70;
 function withBias(camPosZ, robotY) { return robotY + HEAD_OFFSET + camPosZ * VERTICAL_BIAS; }
 
 const RAW_KEYFRAMES = [
-    // hero — centered under the headline, comfortably clear of the meta line
-    { camPos: [0, 0, 750], robotX: 0, robotY: -108, rotY: 0 },
+    // hero — centered under the headline. At in-between viewport heights
+    // (~950px, a common laptop-with-browser-chrome size — too tall to
+    // trigger the <760 compact/mobile treatment, but shorter than a full
+    // 1080 desktop) the previous camPos.z=750 put the head-top right on
+    // top of the "Für Windows..." badge (measured via direct NDC
+    // projection against the badge's own getBoundingClientRect: head-top
+    // ≈612 vs badge span 645-664). Pulled back and lowered to clear it
+    // with real margin at 950px while still framing cleanly at 700
+    // (handled separately by MOBILE_KEYFRAME) and 1080+.
+    { camPos: [0, 0, 1700], robotX: 0, robotY: -60, rotY: 0 },
     // smart engine — text on the left, bot drifts into the right half.
     // Swing kept gentle (was ±92 / ±0.55, now ±65 / ±0.32) so the handoff
     // to the next section reads as a drift, not a disorienting cross-spin.
@@ -68,9 +76,14 @@ const RAW_KEYFRAMES = [
     // bot pulls back, rises, and shrinks toward the top — a small, distant
     // presence above the copy rather than sitting behind/through it
     { camPos: [0, 0, 640], robotX: 0, robotY: -20, rotY: 0.12, camLookYOverride: 95 },
-    // download — pulled back and low: this section is shorter (630px) and
-    // has its own "Zur Anleitung" link, which the bot must stay well clear of
-    { camPos: [0, 0, 700], robotX: 0, robotY: -260, rotY: 0 },
+    // download — pulled back further and low: this section stacks a link,
+    // a button, AND a meta line above the bot. camPos.z=700 measured out to
+    // the bot's head-top landing at screen-y≈580 (verified via direct NDC
+    // projection against each text element's own getBoundingClientRect),
+    // squarely on top of the meta text and the link below it. Pulling back
+    // to 1100 (the "distance" lever — see withBias) drops head-top to
+    // ≈620, clear of the meta line's bottom (~605) with real margin.
+    { camPos: [0, 0, 1100], robotX: 0, robotY: -260, rotY: 0 },
 ];
 const KEYFRAMES = RAW_KEYFRAMES.map(k => ({
     camPos: [k.camPos[0], k.camPos[1], k.camPos[2]],
@@ -92,19 +105,27 @@ const KEYFRAMES = RAW_KEYFRAMES.map(k => ({
 // fully saturated, near-neon accents — the bloom pass barely had anything
 // to grab onto before, so the "color change" demo read as subtle instead
 // of showing off. Every look below now has one properly punchy hue.
+// "sides" (the visor bezel/trim) used to be left out of every look here —
+// bodySidesMat was never touched by the cycle, so it sat permanently white
+// regardless of which look was active, reading as an unfinished patch that
+// clashed against the vivid body/accent colors (worst on the dark looks,
+// where a big stuck-white bezel washed the whole face out pastel). Each
+// look now gives it its own trim shade, cohesive with but distinct from
+// the body color, matching how the real Studio treats "Körper (Seiten)"
+// as its own colorable part.
 const STYLE_LOOKS = [
-    { body: 0xffffff, blue: 0x0057ff, ears: false, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Standard' },
-    { body: 0xff2d1e, blue: 0x161616, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
-    { body: 0x0046ff, blue: 0xffffff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' },
-    { body: 0xf5f5f7, blue: 0x00e5a8, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
-    { body: 0x1c1c1e, blue: 0xffb800, ears: false, glasses: false, hat: true, antenna: false, wheel1: true, material: 'Matte' },
-    { body: 0x9aa0a6, blue: 0x00d4ff, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
-    { body: 0xffffff, blue: 0xff2e8a, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
+    { body: 0xffffff, blue: 0x0057ff, sides: 0xf2f2f4, ears: false, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Standard' },
+    { body: 0xff2d1e, blue: 0x161616, sides: 0x1c1c1e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
+    { body: 0x0046ff, blue: 0xffffff, sides: 0xe3e3e8, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' },
+    { body: 0xf5f5f7, blue: 0x00e5a8, sides: 0xd6d6da, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
+    { body: 0x1c1c1e, blue: 0xffb800, sides: 0x2c2c2e, ears: false, glasses: false, hat: true, antenna: false, wheel1: true, material: 'Matte' },
+    { body: 0x9aa0a6, blue: 0x00d4ff, sides: 0x6e7378, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
+    { body: 0xffffff, blue: 0xff2e8a, sides: 0xf2f2f4, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
 ];
 let styleLookIndex = 0;
 let styleLookTimer = 0;
 const STYLE_LOOK_HOLD = 2.2; // seconds per look
-const targetColor = { body: new THREE.Color(0xffffff), blue: new THREE.Color(0x2a4fd6) };
+const targetColor = { body: new THREE.Color(0xffffff), blue: new THREE.Color(0x2a4fd6), sides: new THREE.Color(0xf2f2f4) };
 let targetMaterialName = 'Standard';
 
 function applyAccessoryLook(look, target) {
@@ -201,20 +222,20 @@ function setMaterialInstant(mats, presetName) {
 // bot to bot. Main bot (center, index 2 of 5 visually) keeps the plain
 // default look; these four fill out the rest with real variety.
 const EXTRA_BOT_LOOKS = [
-    { body: 0xffffff, blue: 0x00e5ff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' }, // Auto — electric cyan, glasses, chrome
-    { body: 0x1c1c1e, blue: 0xffa000, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Matte' }, // Work — vivid amber, ears, matte
-    { body: 0x2a1030, blue: 0xff0080, ears: false, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Gloss' }, // Play — hot magenta, antenna, sport wheel, gloss
-    { body: 0xf5f5f7, blue: 0x00e5a8, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' }, // vivid mint, ears+glasses, sport wheel, satin
+    { body: 0xffffff, blue: 0x00e5ff, sides: 0xf2f2f4, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' }, // Auto — electric cyan, glasses, chrome
+    { body: 0x1c1c1e, blue: 0xffa000, sides: 0x2c2c2e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Matte' }, // Work — vivid amber, ears, matte
+    { body: 0x2a1030, blue: 0xff0080, sides: 0x241226, ears: false, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Gloss' }, // Play — hot magenta, antenna, sport wheel, gloss
+    { body: 0xf5f5f7, blue: 0x00e5a8, sides: 0xd6d6da, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' }, // vivid mint, ears+glasses, sport wheel, satin
 ];
 // A short alternate look each extra bot occasionally swaps to on its own
 // clock (see updateExtraBots) so the lineup doesn't sit static — each bot
 // picks its own moment independent of the others and of the main bot's
 // customization cycle, which is the "individual" animation being asked for.
 const EXTRA_BOT_ALT_LOOKS = [
-    { body: 0xffffff, blue: 0xff2d1e, ears: true, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
-    { body: 0x1c1c1e, blue: 0x00d4ff, ears: false, glasses: false, hat: false, antenna: true, wheel1: false, material: 'Chrome' },
-    { body: 0x2a1030, blue: 0xffb800, ears: false, glasses: true, hat: false, antenna: true, wheel1: true, material: 'Satin' },
-    { body: 0xf5f5f7, blue: 0x0057ff, ears: false, glasses: false, hat: false, antenna: false, wheel1: true, material: 'Matte' },
+    { body: 0xffffff, blue: 0xff2d1e, sides: 0xf2f2f4, ears: true, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
+    { body: 0x1c1c1e, blue: 0x00d4ff, sides: 0x2c2c2e, ears: false, glasses: false, hat: false, antenna: true, wheel1: false, material: 'Chrome' },
+    { body: 0x2a1030, blue: 0xffb800, sides: 0x241226, ears: false, glasses: true, hat: false, antenna: true, wheel1: true, material: 'Satin' },
+    { body: 0xf5f5f7, blue: 0x0057ff, sides: 0xd6d6da, ears: false, glasses: false, hat: false, antenna: false, wheel1: true, material: 'Matte' },
 ];
 let extraBots = [];
 // Per-bot bob/turn frequency+amplitude multipliers — previously every bot
@@ -241,6 +262,7 @@ function createExtraBots() {
         const mats = getBodyMats(clone);
         if (mats.base) mats.base.color.setHex(look.body);
         if (mats.blue) mats.blue.color.setHex(look.blue);
+        if (mats.sides) mats.sides.color.setHex(look.sides);
         setMaterialInstant(mats, look.material);
         applyAccessoryLook(look, clone);
         clone.userData.phase = i * 1.7 + 0.6; // desyncs the idle bob per bot
@@ -285,6 +307,7 @@ function updateExtraBots(dt, active, centerX, centerY) {
                 const mats = bot.userData.mats;
                 if (mats.base) mats.base.color.setHex(look.body);
                 if (mats.blue) mats.blue.color.setHex(look.blue);
+                if (mats.sides) mats.sides.color.setHex(look.sides);
                 setMaterialInstant(mats, look.material);
                 applyAccessoryLook(look, bot);
                 bot.userData.popScaleVel -= 3.4;
@@ -800,12 +823,14 @@ function animate() {
                 const look = STYLE_LOOKS[styleLookIndex];
                 targetColor.body.setHex(look.body);
                 targetColor.blue.setHex(look.blue);
+                targetColor.sides.setHex(look.sides);
                 targetMaterialName = look.material;
                 applyAccessoryLook(look);
                 triggerAccessoryPop();
             }
             bodyBaseMat.color.lerp(targetColor.body, 0.04);
             bodyBlueMat.color.lerp(targetColor.blue, 0.04);
+            if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.04);
             lerpMaterialTo(bodyMats, targetMaterialName, 0.05);
         } else if (bodyBaseMat && bodyBlueMat) {
             // Outside the customization section, ease back to the default
@@ -817,9 +842,11 @@ function animate() {
             const def = STYLE_LOOKS[0];
             targetColor.body.setHex(def.body);
             targetColor.blue.setHex(def.blue);
+            targetColor.sides.setHex(def.sides);
             targetMaterialName = def.material;
             bodyBaseMat.color.lerp(targetColor.body, 0.03);
             bodyBlueMat.color.lerp(targetColor.blue, 0.03);
+            if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.03);
             lerpMaterialTo(bodyMats, targetMaterialName, 0.03);
             applyAccessoryLook(def);
         }

@@ -128,7 +128,11 @@ section.visible {
 .btn-large:hover { background: #007AFF; transform: scale(1.05); }
 
 .download-meta { margin-top: 20px; font-size: 13px; color: rgba(255,255,255,0.4); letter-spacing: 0.3px; }
-.link-subtle { display: inline-block; margin-top: 30px; color: #6ea8ff; text-decoration: none; font-size: 15px; font-weight: 500; transition: color 0.3s; }
+/* Sits between the intro paragraph and the CTA button rather than after
+   everything else — the fixed-position 3D bot is framed to appear just
+   below the meta line, so a trailing link there used to render right on
+   top of its face. */
+.link-subtle { display: block; margin: 0 0 28px; color: #6ea8ff; text-decoration: none; font-size: 15px; font-weight: 500; transition: color 0.3s; }
 .link-subtle:hover { color: #9cc4ff; }
 
 footer {
