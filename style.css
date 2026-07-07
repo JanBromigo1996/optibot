@@ -14,6 +14,46 @@ body {
     z-index: -1;
 }
 
+/* A soft color wash behind everything, eased toward the live customization
+   accent color by script.js (mirrors the 3D scene's own accentLight) — ties
+   the whole page's mood to whatever color the bot is currently wearing,
+   instead of the atmosphere staying flat black while only the bot changes. */
+#ambient-glow {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(ellipse 70% 55% at 50% 55%, var(--accent-glow, rgba(10,132,255,0.16)), transparent 72%);
+    transition: background 1.4s ease;
+}
+
+/* Thin top-of-viewport progress bar, filled by script.js as the user scrolls
+   through the page — cheap orientation cue on a long scrollytelling page
+   that otherwise gives no sense of "how much is left". */
+#scroll-progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 2.5px;
+    width: 0%;
+    background: linear-gradient(90deg, #0A84FF, #19f2ff);
+    box-shadow: 0 0 10px rgba(25, 242, 254, 0.7);
+    z-index: 200;
+    pointer-events: none;
+}
+
+/* Subtle animated film grain — a flat pure-black background reads as
+   "digital/cheap" at large sizes; a faint texture is what separates a real
+   cinematic black from a CSS black. Pure SVG turbulence, no image asset. */
+#grain-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 150;
+    pointer-events: none;
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
 nav {
     position: fixed;
     top: 0; left: 0; right: 0;
@@ -88,6 +128,31 @@ section.visible {
 .hero h2 { font-size: clamp(26px, 5vw, 48px); font-weight: 600; letter-spacing: -1px; margin-bottom: 30px; color: #e5e5ea; }
 .hero p { font-size: clamp(17px, 2.5vw, 24px); color: #86868b; max-width: 600px; margin: 0 auto; line-height: 1.4; }
 .hero-meta { margin-top: 28px; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.45); letter-spacing: 0.5px; }
+
+#scroll-hint {
+    position: fixed;
+    left: 50%;
+    bottom: 36px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255,255,255,0.4);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    z-index: 20;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+}
+#scroll-hint svg { animation: scrollHintBounce 1.8s ease-in-out infinite; }
+@keyframes scrollHintBounce {
+    0%, 100% { transform: translateY(0); opacity: 0.5; }
+    50% { transform: translateY(7px); opacity: 1; }
+}
 
 .feature { flex-direction: row; align-items: center; justify-content: space-between; gap: 60px; }
 .feature-center { flex-direction: column; align-items: center; text-align: center; justify-content: center; }

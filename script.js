@@ -14,6 +14,14 @@ let scene, camera, renderer, composer, bloomPass, robot, mixer;
 let bodyBaseMat, bodyBlueMat, bodySidesMat, accentLight;
 const clock = new THREE.Clock();
 
+// Page-wide design elements (progress bar, ambient color wash, hero scroll
+// hint) — driven from the same animate() loop as everything else rather
+// than a second scroll listener, so they stay in lockstep with the camera.
+const elScrollProgress = document.getElementById('scroll-progress');
+const elAmbientGlow = document.getElementById('ambient-glow');
+const elScrollHint = document.getElementById('scroll-hint');
+let curGlowColor = new THREE.Color(0x0A84FF);
+
 // Scroll state must live at module scope: animate() reads it every frame —
 // declared inside init() it throws a ReferenceError that kills the whole
 // render loop before composer.render(), leaving the background pure black.
@@ -855,6 +863,24 @@ function animate() {
     }
 
     if (accentLight) accentLight.color.lerp(targetColor.blue, 0.04);
+
+    // Ambient page glow tracks the same accent color as the 3D scene's own
+    // accentLight, so the atmosphere behind the text shifts with it too —
+    // subtle (low alpha) on purpose, this is a mood wash, not a spotlight.
+    if (elAmbientGlow) {
+        curGlowColor.lerp(targetColor.blue, 0.03);
+        const r = Math.round(curGlowColor.r * 255), g = Math.round(curGlowColor.g * 255), b = Math.round(curGlowColor.b * 255);
+        elAmbientGlow.style.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.16)`);
+    }
+
+    if (elScrollProgress) {
+        const maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
+        const pct = Math.max(0, Math.min(1, window.scrollY / maxScroll)) * 100;
+        elScrollProgress.style.width = pct + '%';
+    }
+    if (elScrollHint) {
+        elScrollHint.style.opacity = progress < 0.12 ? '1' : '0';
+    }
 
     updateFace(performance.now(), delta, statsActive);
     composer.render();
