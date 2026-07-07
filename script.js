@@ -82,7 +82,14 @@ const RAW_KEYFRAMES = [
     { camPos: [0, 0, 420], robotX: -65, robotY: -25, rotY: -0.32 },
     // multi-bot lineup — pulled back so all five fit in frame; the main bot
     // is the middle of the lineup, four clones fan out either side of it
-    { camPos: [0, 0, 1000], robotX: 0, robotY: -40, rotY: 0 },
+    // Real bug: this had no camLookYOverride, so camLook.y auto-tracked
+    // robotY via withBias — pushing robotY down also tilted the camera
+    // down by the same amount to compensate, nearly cancelling out any
+    // on-screen movement (confirmed: tripling the offset barely moved the
+    // lineup at all in testing). Fixing the look target here (at the
+    // original auto-computed value) means robotY now actually controls
+    // where the lineup lands in frame, clearing the paragraph text below.
+    { camPos: [0, 0, 1000], robotX: 0, robotY: -220, rotY: 0, camLookYOverride: 30 },
     // stats display — text on the left, bot (showing the display, not eyes)
     // drifts into the right half, framed a bit closer so the display reads
     { camPos: [0, 0, 360], robotX: 60, robotY: -10, rotY: 0.22 },
@@ -382,8 +389,32 @@ function updateExtraBots(dt, active, centerX, centerY) {
         // scrolling past the section, which is exactly what showed up as
         // "the animation is wrong" in a screenshot taken mid-scroll.
         const k = active ? 220 : 500, d = active ? 14 : 45;
-        bot.userData.scaleVel += (k * (target - bot.userData.scaleVal) - d * bot.userData.scaleVel) * dt;
-        bot.userData.scaleVal += bot.userData.scaleVel * dt;
+        // Real bug, found by tracing a "huge frozen bot" screenshot: explicit
+        // Euler integration of a spring is only stable while d*step < 2. The
+        // exit spring's d=45 needs step < ~0.044s, but dt can be as large as
+        // the render loop's own 0.05s clamp after any frame hitch (GC pause,
+        // scroll jank, a heavy script tick) — one such frame sent scaleVal
+        // oscillating to wildly negative values (observed: -2.379). Since the
+        // visible=false early-return below fires before scale.setScalar()
+        // runs, the bot's *actual* THREE.js scale stayed frozen at whatever
+        // garbage value the spring last computed mid-oscillation — so next
+        // time this same bot fades in, it flashes at the wrong size for a
+        // frame, and if `active` flips again mid-oscillation it can stay
+        // visible at a huge scale — this is the real cause of the "ghost/
+        // giant frozen bots" report. Sub-stepping keeps the integration
+        // stable regardless of how large dt gets.
+        let remaining = dt;
+        while (remaining > 1e-6) {
+            const step = Math.min(0.008, remaining);
+            bot.userData.scaleVel += (k * (target - bot.userData.scaleVal) - d * bot.userData.scaleVel) * step;
+            bot.userData.scaleVal += bot.userData.scaleVel * step;
+            remaining -= step;
+        }
+        // Belt-and-suspenders clamp: this spring should never legitimately
+        // leave [0, ~1.3] even with the bouncy entrance overshoot, so a hard
+        // clamp costs nothing and guarantees no future bug in this function
+        // can again freeze a bot at an absurd scale.
+        bot.userData.scaleVal = Math.max(-0.05, Math.min(1.3, bot.userData.scaleVal));
         const s = Math.max(0, bot.userData.scaleVal);
         if (s < 0.01 && !active) { bot.visible = false; return; }
         bot.visible = true;
@@ -413,6 +444,32 @@ function updateExtraBots(dt, active, centerX, centerY) {
 // (blink + a slow wandering gaze) instead of one static drawn-once frame,
 // which read as "dead" with no motion at all in the face.
 // ------------------------------------------------------------------
+// Per-emotion eye-shape parameters for FaceController.drawFace — real bug
+// fix: this was called but never defined anywhere, throwing a
+// ReferenceError on the very first drawn frame. Since that happened inside
+// the render loop (not guarded), the exception killed the whole rAF loop
+// permanently after one frame — the canvas never cleared again, so
+// whatever had last been drawn (e.g. the multi-bot lineup) stayed frozen
+// on screen as "ghosts" behind every later section, and the camera never
+// moved again either, since animate() itself had died.
+function getEmotionParams(emotion) {
+    switch (emotion) {
+        case 'joy':
+            return { scaleY: 0.82, skewX: 0, curveTop: 0.55, curveBottom: -0.35, isGlitch: false, isHeart: false };
+        case 'sadness':
+            return { scaleY: 1.1, skewX: 0.14, curveTop: 0.22, curveBottom: -0.08, isGlitch: false, isHeart: false };
+        case 'anger':
+            return { scaleY: 0.6, skewX: 0.32, curveTop: 0.3, curveBottom: 0.12, isGlitch: false, isHeart: false };
+        case 'glitch':
+            return { scaleY: 1.0, skewX: 0, curveTop: 0, curveBottom: 0, isGlitch: true, isHeart: false };
+        case 'heart':
+            return { scaleY: 1.0, skewX: 0, curveTop: 0, curveBottom: 0, isGlitch: false, isHeart: true };
+        case 'neutral':
+        default:
+            return { scaleY: 1.0, skewX: 0, curveTop: 0, curveBottom: 0, isGlitch: false, isHeart: false };
+    }
+}
+
 class FaceController {
     constructor() {
         this.faceCanvas = document.createElement('canvas');
@@ -1042,7 +1099,11 @@ function animate() {
     // permanently collide with whichever paragraph happens to scroll past,
     // fade it out once you leave the hero (where there's real open space
     // above/below the copy) and back in near the download CTA (same deal).
-    if (mobile) {
+    // (`mobile` isn't a variable in scope here — this is a real
+    // ReferenceError that fires every frame and kills the whole render
+    // loop permanently after the first frame. Matches the <900px threshold
+    // getResponsiveKeyframe() above already uses.)
+    if (window.innerWidth < 900) {
         // Only the hero has real open space around the text on a stacked
         // mobile layout; everywhere else, fade down to a faint background
         // presence rather than colliding with whichever paragraph is
