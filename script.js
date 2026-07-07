@@ -172,6 +172,42 @@ function updateAccessoryPop(dt) {
     popKick += popKickVel * dt;
 }
 
+// ------------------------------------------------------------------
+// Scroll-velocity tracking & derived physics
+// ------------------------------------------------------------------
+// prevScrollProgress: the progress value from the previous frame, used
+// to derive a frame-to-frame velocity. Declared here so it survives
+// across animate() calls without being a const inside the closure.
+let prevScrollProgress = 0;
+// scrollVelSmooth: exponentially-smoothed scroll velocity (progress
+// units / second). Raw frame-to-frame deltas are extremely noisy
+// (especially on trackpads); smoothing by ~8× per second gives a
+// value that reacts quickly but isn't dominated by single-frame spikes.
+let scrollVelSmooth = 0;
+
+// ------------------------------------------------------------------
+// Body inertia / head jiggle
+// ------------------------------------------------------------------
+// When the user scrolls, the target robot-Y position changes. Rather
+// than the head just following instantly (it already eases via curRobotY),
+// these springs add a *secondary* offset that lags behind and overshoots
+// slightly — the head "resists" being dragged and then bounces back.
+// This is the same "follow-through" principle animators use for hair,
+// tails, or antenna — the body leads, attached parts trail.
+let jiggleY = 0, jiggleVelY = 0;
+let jiggleX = 0, jiggleVelX = 0;
+
+// ------------------------------------------------------------------
+// Eye expression physics
+// ------------------------------------------------------------------
+// eyeSX / eyeSY: spring-driven horizontal and vertical scale of the
+// eye squircles on the face canvas. Rest position is 1×1 (normal).
+// Fast scroll → surprised (wide+flat: scaleX up, scaleY down).
+// Settling after scroll → eyes bounce tall momentarily (relief).
+// Multi-bot section → eyes subtly wider and brighter (happy).
+let eyeSX = 1, eyeSXVel = 0; // horizontal scale spring
+let eyeSY = 1, eyeSYVel = 0; // vertical scale spring
+
 // Find a clone/instance's own base/blue body materials by name — the
 // original FBX-derived material names are lost once we replace them with
 // fresh MeshPhysicalMaterial instances, so those replacements explicitly
@@ -353,21 +389,69 @@ function initFaceTexture() {
     return faceTex;
 }
 
-function drawFace(lidCoverage, offsetX, offsetY) {
+// scaleX / scaleY: spring-driven eye expression scale (see eyeSX/SY above).
+// Kept as separate parameters rather than globals so drawFace stays a pure
+// function and can be called from initFaceTexture without a scale value.
+function drawFace(lidCoverage, offsetX, offsetY, scaleX = 1, scaleY = 1) {
     const ctx = faceCtx;
     ctx.fillStyle = '#04140a';
     ctx.fillRect(0, 0, 1024, 1024);
-    const eyeH = Math.max(14, 210 * (1 - lidCoverage));
+
+    // Base eye dimensions before expression scaling.
+    // 210px is the "neutral" squircle size tuned to the face canvas resolution.
+    const baseW = 210, baseH = 210;
+    const eyeW = baseW * Math.max(0.3, scaleX);
+    // scaleY and lidCoverage both reduce the height — multiply them so a
+    // surprised (scaleY=0.75) mid-blink (lidCoverage=0.5) gives 0.75×0.5
+    // of base height, not just one of them.
+    const eyeH = Math.max(10, baseH * Math.max(0.05, scaleY) * (1 - lidCoverage));
     const eyeY = 512 - eyeH / 2;
+    // Glow scales with openness — wider brighter eyes pop more
+    const glow = 55 + scaleY * 30 + eyeW * 0.05;
+
     [364.5, 659.5].forEach(cx => {
+        const ex = cx - eyeW / 2 + offsetX;
+        const ey = eyeY + offsetY;
+        const radius = Math.min(eyeW / 2, eyeH / 2, 72);
+
+        // Outer glow
         ctx.save();
         ctx.shadowColor = 'rgba(25,242,255,0.9)';
-        ctx.shadowBlur = 60;
+        ctx.shadowBlur = glow;
         ctx.fillStyle = '#19f2ff';
         ctx.beginPath();
-        ctx.roundRect(cx - 105 + offsetX, eyeY + offsetY, 210, eyeH, Math.min(70, eyeH / 2));
+        ctx.roundRect(ex, ey, eyeW, eyeH, radius);
         ctx.fill();
         ctx.restore();
+
+        // Specular highlight — a small bright streak in the top-right corner
+        // of each eye that only appears when the eyes are open wide (scaleY>1),
+        // giving them a moist/alive look (same trick 2D animators use for eyes).
+        if (scaleY > 1.0 && eyeH > 60) {
+            const hlW = eyeW * 0.22, hlH = eyeH * 0.28;
+            ctx.save();
+            ctx.globalAlpha = Math.min(0.85, (scaleY - 1.0) * 4.5);
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = 'rgba(255,255,255,0.6)';
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.roundRect(ex + eyeW * 0.58, ey + eyeH * 0.10, hlW, hlH, hlH / 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Inner pupil — a slightly darker, smaller squircle centered inside the
+        // eye. Reads as depth/iris at close framing (stats section close-up).
+        if (eyeH > 40) {
+            const pupilW = eyeW * 0.55, pupilH = eyeH * 0.55;
+            ctx.save();
+            ctx.globalAlpha = 0.25;
+            ctx.fillStyle = '#05a8c0';
+            ctx.beginPath();
+            ctx.roundRect(cx - pupilW / 2 + offsetX, ey + (eyeH - pupilH) / 2, pupilW, pupilH, Math.min(pupilW, pupilH) * 0.45);
+            ctx.fill();
+            ctx.restore();
+        }
     });
 }
 
@@ -405,7 +489,10 @@ function drawStatPage(ctx, label, value, color) {
     }
 }
 
-function updateFace(now, dt, statsActive) {
+// scaleX/Y: the current spring-driven eye expression scales (eyeSX/SY)
+// passed in from animate() — updateFace is called at the end of the loop
+// after those springs have already been ticked.
+function updateFace(now, dt, statsActive, scaleX = 1, scaleY = 1) {
     if (statsActive) {
         displayPageTimer += dt;
         if (displayPageTimer > DISPLAY_PAGE_HOLD) {
@@ -419,7 +506,8 @@ function updateFace(now, dt, statsActive) {
 
     if (now > nextBlinkAt) {
         blinkStart = now;
-        nextBlinkAt = now + 2400 + Math.random() * 3200;
+        // Blink faster when excited (high eyeSY), slower when calm
+        nextBlinkAt = now + (1800 + Math.random() * 2800) / Math.max(0.6, scaleY);
     }
     const t = now - blinkStart;
     let lidCoverage = 0;
@@ -429,16 +517,23 @@ function updateFace(now, dt, statsActive) {
     }
 
     if (now > nextGazeAt) {
-        gazeTargetX = (Math.random() - 0.5) * 0.7;
-        gazeTargetY = (Math.random() - 0.5) * 0.35;
-        nextGazeAt = now + 1800 + Math.random() * 2600;
+        gazeTargetX = (Math.random() - 0.5) * 0.75;
+        gazeTargetY = (Math.random() - 0.5) * 0.4;
+        // Eyes dart quickly to new position (0.14 factor per frame at 60fps),
+        // then ease in slowly — mimics the saccade + smooth-pursuit split of
+        // real eye movement rather than a single constant lerp speed.
+        nextGazeAt = now + 1200 + Math.random() * 2200;
     }
-    gazeX += (gazeTargetX - gazeX) * 0.05;
-    gazeY += (gazeTargetY - gazeY) * 0.05;
+    // Dart phase: snap most of the way there in the first 80ms after a new
+    // target is set (high lerp factor), then ease the remaining distance slowly.
+    const gazeAge = now - (nextGazeAt - (1200 + 2200 / 2)); // approximate
+    const gazeFactor = gazeAge < 80 ? 0.22 : 0.04;
+    gazeX += (gazeTargetX - gazeX) * gazeFactor;
+    gazeY += (gazeTargetY - gazeY) * gazeFactor;
 
     const mode = DISPLAY_PAGES[displayPageIndex];
     if (mode === 'face') {
-        drawFace(lidCoverage, gazeX * 34, gazeY * 22);
+        drawFace(lidCoverage, gazeX * 38, gazeY * 26, scaleX, scaleY);
     } else {
         const wobble = Math.sin(now * 0.0006 + (mode === 'ram' ? 0 : mode === 'cpu' ? 2.1 : 4.2));
         const value = Math.max(8, Math.min(96, 52 + wobble * 34));
@@ -750,6 +845,59 @@ function animate() {
     mouseY += (mouseTargetY - mouseY) * 0.04;
 
     const progress = getSectionProgress();
+
+    // ---- Scroll velocity (progress units / second) -------------------------
+    // Frame-to-frame progress delta divided by real elapsed time. Clamped so
+    // a single huge stall frame (tab switch, GC pause) doesn't spike the
+    // physics into wild territory.
+    const rawVel = rawDelta > 0 ? Math.min(8, Math.abs((progress - prevScrollProgress) / rawDelta)) : 0;
+    const velSign = (progress - prevScrollProgress) >= 0 ? 1 : -1;
+    prevScrollProgress = progress;
+    // Smooth by ~8× per second (fast enough to feel responsive, slow enough
+    // to suppress trackpad micro-jitter)
+    scrollVelSmooth += (rawVel - scrollVelSmooth) * Math.min(1, rawDelta * 8);
+
+    // ---- Body jiggle / head inertia ----------------------------------------
+    // The jiggle target is proportional to scroll velocity: scrolling DOWN
+    // (velSign +1) pulls the head DOWN (jiggleY < 0, i.e. negative offset)
+    // so it "trails" behind the camera's upward pan — exactly the follow-
+    // through you'd feel if the head were attached to the body by a spring.
+    const jiggleTargetY = velSign * scrollVelSmooth * -22;
+    // Underdamped spring so there's a small overshoot on settle (the head
+    // bobs back up when you stop scrolling). k=70, d=9 → ζ≈0.54.
+    jiggleVelY += (70 * (jiggleTargetY - jiggleY) - 9 * jiggleVelY) * delta;
+    jiggleY += jiggleVelY * delta;
+    // Horizontal jiggle: mouse-parallax direction change causes a small tilt
+    jiggleVelX += (60 * (-jiggleX) - 9 * jiggleVelX) * delta;
+    jiggleX += jiggleVelX * delta;
+
+    // ---- Eye expression springs --------------------------------------------
+    // Target eye scale is a function of scroll speed and current section.
+    // Three states: calm (rest), alert (medium speed), surprised (fast scroll)
+    // Each uses a different (scaleX, scaleY) pair:
+    //   calm      → 1.00 × 1.00  perfect squircle
+    //   alert     → 1.04 × 1.14  taller/more attentive
+    //   surprised → 1.20 × 0.72  wide + vertically squashed
+    // When in the multi section the bot looks "happy": slightly wider + brighter
+    let targetSX, targetSY;
+    if (scrollVelSmooth > 2.2) {
+        targetSX = 1.22; targetSY = 0.68; // fast → surprised
+    } else if (scrollVelSmooth > 0.55) {
+        targetSX = 1.04; targetSY = 1.16; // medium → alert / attentive
+    } else {
+        // Determine section-based expression from progress (multiActive not
+        // yet computed at this point, so check the range directly)
+        const inMulti = progress >= 3 && progress < 3.82;
+        targetSX = inMulti ? 1.10 : 1.00;
+        targetSY = inMulti ? 1.08 : 1.00; // multi → happy/wide
+    }
+    // Underdamped spring: k=180/d=13 → ζ≈0.48, gives a nice snappy bounce
+    // when transitioning from surprised back to calm (eyes spring open then
+    // settle to normal, like a rubber band releasing).
+    eyeSXVel += (180 * (targetSX - eyeSX) - 13 * eyeSXVel) * delta;
+    eyeSX += eyeSXVel * delta;
+    eyeSYVel += (180 * (targetSY - eyeSY) - 13 * eyeSYVel) * delta;
+    eyeSY += eyeSYVel * delta;
     const mobile = isMobileView();
     const i0 = Math.max(0, Math.min(KEYFRAMES.length - 1, Math.floor(progress)));
     const i1 = Math.min(KEYFRAMES.length - 1, i0 + 1);
@@ -830,9 +978,13 @@ function animate() {
     // span, however small, risks still being "active" while at rest one
     // section later (confirmed: a 0.08 bleed still had the multi-bot lineup
     // fully visible while resting in "stats", one section past "multi").
-    // Exact non-overlapping ranges guarantee that can't happen.
+    // multiActive ends at 3.82 rather than 4.0 — the extra bots need a ~0.18
+    // progress-unit head start to fully spring-exit (k=500/d=45 spring has a
+    // ~0.18 s time constant) before the camera snaps to the close-up stats
+    // framing (z=360). Without the lead, all four bots are still at full scale
+    // and visible at the frame edges when the "Immer im Blick" section arrives.
     const styleActive = progress >= 2 && progress < 3;
-    const multiActive = progress >= 3 && progress < 4;
+    const multiActive = progress >= 3 && progress < 3.82;
     const statsActive = progress >= 4 && progress < 5;
 
     if (robot) {
@@ -844,10 +996,14 @@ function animate() {
         // section — reported feedback ("mehr Emotion und Umschauen").
         const lookAround = Math.sin(Date.now() * 0.00042) * 0.16 + Math.sin(Date.now() * 0.0011 + 2.1) * 0.06;
         const nod = Math.sin(Date.now() * 0.00065 + 1.7) * 0.05;
-        robot.position.x = curRobotX;
-        robot.position.y = curRobotY + Math.sin(Date.now() * 0.0018) * 4; // idle breathing bob
+        robot.position.x = curRobotX + jiggleX;
+        // Idle breathing bob PLUS jiggle offset — the head trails scroll
+        // and then overshoots back, layered on top of the constant breathe.
+        robot.position.y = curRobotY + Math.sin(Date.now() * 0.0018) * 4 + jiggleY;
         robot.rotation.y = curRotY + mouseX * 0.15 + lookAround;
-        robot.rotation.x = mouseY * 0.06 + nod;
+        // Tilt forward slightly when scrolling down (head tips forward as if
+        // leaning into the scroll), backward on scroll up — feels physical.
+        robot.rotation.x = mouseY * 0.06 + nod + jiggleY * 0.0025;
 
         updateAccessoryPop(delta);
         robot.scale.setScalar(baseRobotScale * popScale);
@@ -925,7 +1081,7 @@ function animate() {
         elScrollHint.style.opacity = progress < 0.12 ? '1' : '0';
     }
 
-    updateFace(performance.now(), delta, statsActive);
+    updateFace(performance.now(), delta, statsActive, eyeSX, eyeSY);
     composer.render();
 }
 
