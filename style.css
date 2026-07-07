@@ -97,33 +97,23 @@ section.visible {
 
 .feature { flex-direction: row; align-items: center; justify-content: space-between; gap: 60px; }
 .feature-center { flex-direction: column; align-items: center; text-align: center; justify-content: center; }
-.feature .content { max-width: 500px; flex: 1; }
-.feature h3 { font-size: clamp(34px, 5vw, 56px); font-weight: 700; margin-bottom: 20px; letter-spacing: -1.5px; }
-.feature p { font-size: clamp(17px, 2vw, 22px); color: #86868b; line-height: 1.5; }
-
-.image-container {
+.feature .content {
+    max-width: 460px;
     flex: 1;
-    max-width: 600px;
-    width: 100%;
-    aspect-ratio: 3 / 2;
-    position: relative;
-    border-radius: 24px;
-    box-shadow: 0 40px 80px rgba(0,0,0,0.6);
-    border: 1px solid rgba(255,255,255,0.07);
-    overflow: hidden;
-    background: radial-gradient(circle at center, rgba(30,35,45,0.6) 0%, rgba(10,12,15,0.8) 100%);
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s;
+    /* The bot lives in the fixed WebGL layer behind everything, not in a
+       boxed image next to the text — this soft radial scrim (no border, no
+       edge) just keeps body copy readable over him as he drifts past. */
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 72%);
+    padding: 30px 34px;
 }
-.image-container:hover {
-    transform: scale(1.02) translateY(-4px);
-    box-shadow: 0 50px 100px rgba(0,0,0,0.7);
-}
-.image-container img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    display: block;
-}
-.hero-render { max-width: 800px; margin-bottom: 40px; }
+.feature h3 { font-size: clamp(34px, 5vw, 56px); font-weight: 700; margin-bottom: 20px; letter-spacing: -1.5px; }
+.feature p { font-size: clamp(17px, 2vw, 22px); color: #c2c2c7; line-height: 1.5; }
+
+/* An invisible, unstyled half of the row — no border, no box, no frame.
+   Its only job is reserving screen space so the text half doesn't stretch
+   full-width; the fixed-position 3D bot behind it is the "visual" here,
+   framed into this exact half by the scroll-driven camera in script.js. */
+.visual-spacer { flex: 1; max-width: 600px; width: 100%; aspect-ratio: 3 / 2; }
 
 .download-section { align-items: center; text-align: center; min-height: 70vh; background: linear-gradient(to top, rgba(10,132,255,0.1), transparent); }
 .download-section h1 { font-size: clamp(36px, 7vw, 64px); font-weight: 700; margin-bottom: 20px; letter-spacing: -1px; }
@@ -172,12 +162,8 @@ footer a:hover { color: #f5f5f7; }
         gap: 36px;
         text-align: center;
     }
-    /* Image above text on mobile, regardless of desktop order */
-    .feature .image-container { order: -1; }
     .feature .content { max-width: 100%; }
-
-    .image-container { max-width: 100%; }
-    .hero-render { max-width: 100%; }
+    .visual-spacer { display: none; } /* the bot layer alone carries the visual on narrow screens */
 }
 
 @media (max-width: 480px) {
@@ -188,5 +174,4 @@ footer a:hover { color: #f5f5f7; }
 
 @media (prefers-reduced-motion: reduce) {
     section { transition: none; transform: none; opacity: 1; }
-    .image-container { transition: none; }
 }
