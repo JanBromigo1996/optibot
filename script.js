@@ -30,38 +30,118 @@ let scrollFrac = 0; // damped, eased 0..1 position through the page
 // ------------------------------------------------------------------
 const SECTION_IDS = ['section-hero', 'section-smart', 'section-style', 'section-light', 'download'];
 const KEYFRAMES = [
-    // hero — centered, pulled back enough that the head sits well below
-    // the "Für Windows 10 & 11" line instead of poking up into it
-    { camPos: [0, 70, 540], camLook: [0, 40, 0], robotX: 0, robotY: -190, rotY: 0 },
+    // hero — centered, raised so he reads as present/alive right under the
+    // headline rather than sunk near the bottom of the viewport
+    { camPos: [0, 65, 520], camLook: [0, 42, 0], robotX: 0, robotY: -168, rotY: 0 },
     // smart engine — text on the left, bot drifts into the right half
-    { camPos: [10, 55, 380], camLook: [0, 45, 0], robotX: 92, robotY: -125, rotY: 0.55 },
+    { camPos: [10, 55, 380], camLook: [0, 48, 0], robotX: 92, robotY: -90, rotY: 0.55 },
     // customization — text on the right, bot drifts into the left half
-    { camPos: [-10, 55, 380], camLook: [0, 45, 0], robotX: -92, robotY: -125, rotY: -0.55 },
+    { camPos: [-10, 55, 380], camLook: [0, 48, 0], robotX: -92, robotY: -90, rotY: -0.55 },
     // lightweight — this section's text is centered (no side spacer to slot
     // into), so instead of competing for the same middle of the frame the
     // bot pulls back, rises, and shrinks toward the top — a small, distant
     // presence above the copy rather than sitting behind/through it
-    { camPos: [0, 150, 640], camLook: [0, 95, 0], robotX: 0, robotY: -30, rotY: 0.12 },
+    { camPos: [0, 150, 640], camLook: [0, 95, 0], robotX: 0, robotY: -20, rotY: 0.12 },
     // download — pulled back and lower: this section is shorter (630px) and
     // has its own "Zur Anleitung" link near the bottom, which the bot was
-    // sitting directly on top of at the previous, higher position
-    { camPos: [0, 40, 560], camLook: [0, 20, 0], robotX: 0, robotY: -230, rotY: 0 },
+    // sitting directly on top of at a higher position
+    { camPos: [0, 40, 560], camLook: [0, 25, 0], robotX: 0, robotY: -195, rotY: 0 },
 ];
 
 // Curated looks the bot cycles through, live, while the "Dein Bot, dein
-// Stil" section is in view — this is the animated demonstration of Studio
-// customization the copy right next to it talks about, instead of a static
-// screenshot standing in for it.
+// Stil" section is in view — an animated demonstration of Studio
+// customization instead of a static screenshot standing in for it. Runs
+// through every accessory (Ears, Glasses, Hat, Antenna, both wheels), not
+// just a couple, per the explicit ask to show "alle Accessoires...in
+// verschiedenen Kombinationen". Headwear (hat/antenna) stays mutually
+// exclusive and exactly one wheel is ever equipped, matching the real
+// Studio's own equip-slot rules.
 const STYLE_LOOKS = [
-    { body: 0xffffff, blue: 0x2a4fd6, ears: false, glasses: false },
-    { body: 0xe8452c, blue: 0x1c1c1e, ears: true, glasses: false },
-    { body: 0x2a4fd6, blue: 0xffffff, ears: false, glasses: true },
-    { body: 0xf5f5f7, blue: 0x7ddfc3, ears: true, glasses: true },
+    { body: 0xffffff, blue: 0x2a4fd6, ears: false, glasses: false, hat: false, antenna: false, wheel1: false },
+    { body: 0xe8452c, blue: 0x1c1c1e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false },
+    { body: 0x2a4fd6, blue: 0xffffff, ears: false, glasses: true, hat: false, antenna: false, wheel1: false },
+    { body: 0xf5f5f7, blue: 0x7ddfc3, ears: true, glasses: true, hat: false, antenna: false, wheel1: true },
+    { body: 0x1c1c1e, blue: 0xae8f2a, ears: false, glasses: false, hat: true, antenna: false, wheel1: true },
+    { body: 0x9aa0a6, blue: 0x2c2c2e, ears: true, glasses: false, hat: false, antenna: true, wheel1: true },
+    { body: 0xffffff, blue: 0x7ddfc3, ears: false, glasses: true, hat: false, antenna: true, wheel1: false },
 ];
 let styleLookIndex = 0;
 let styleLookTimer = 0;
-const STYLE_LOOK_HOLD = 2.4; // seconds per look
+const STYLE_LOOK_HOLD = 2.2; // seconds per look
 const targetColor = { body: new THREE.Color(0xffffff), blue: new THREE.Color(0x2a4fd6) };
+
+function applyAccessoryLook(look) {
+    robot.traverse(c => {
+        if (c.name === 'Acessory_Ear_1_Left' || c.name === 'Acessory_Ear_1_Right') c.visible = look.ears;
+        if (c.name === 'Acessory_VR_Glasses') c.visible = look.glasses;
+        if (c.name === 'Acessory_Witchhat') c.visible = look.hat;
+        if (c.name === 'Acessory_Antenna') c.visible = look.antenna;
+        if (c.name === 'Acessory_Wheel_1' || c.name === 'Acessory_Wheel_1_Wheel') c.visible = look.wheel1;
+        if (c.name === 'Acessory_Wheel_standard') c.visible = !look.wheel1;
+    });
+}
+
+// ------------------------------------------------------------------
+// Animated eyes: a lightweight version of the real app's live eye canvas
+// (blink + a slow wandering gaze) instead of one static drawn-once frame,
+// which read as "dead" with no motion at all in the face.
+// ------------------------------------------------------------------
+let faceCanvas, faceCtx, faceTex;
+let nextBlinkAt = 0, blinkStart = -9999;
+const BLINK_MS = 150;
+let gazeX = 0, gazeY = 0, gazeTargetX = 0, gazeTargetY = 0, nextGazeAt = 0;
+
+function initFaceTexture() {
+    faceCanvas = document.createElement('canvas');
+    faceCanvas.width = faceCanvas.height = 1024;
+    faceCtx = faceCanvas.getContext('2d');
+    faceTex = new THREE.CanvasTexture(faceCanvas);
+    faceTex.encoding = THREE.sRGBEncoding;
+    drawFace(0, 0, 0);
+    return faceTex;
+}
+
+function drawFace(lidCoverage, offsetX, offsetY) {
+    const ctx = faceCtx;
+    ctx.fillStyle = '#04140a';
+    ctx.fillRect(0, 0, 1024, 1024);
+    const eyeH = Math.max(14, 210 * (1 - lidCoverage));
+    const eyeY = 512 - eyeH / 2;
+    [364.5, 659.5].forEach(cx => {
+        ctx.save();
+        ctx.shadowColor = 'rgba(25,242,255,0.9)';
+        ctx.shadowBlur = 60;
+        ctx.fillStyle = '#19f2ff';
+        ctx.beginPath();
+        ctx.roundRect(cx - 105 + offsetX, eyeY + offsetY, 210, eyeH, Math.min(70, eyeH / 2));
+        ctx.fill();
+        ctx.restore();
+    });
+}
+
+function updateFace(now) {
+    if (now > nextBlinkAt) {
+        blinkStart = now;
+        nextBlinkAt = now + 2400 + Math.random() * 3200;
+    }
+    const t = now - blinkStart;
+    let lidCoverage = 0;
+    if (t >= 0 && t < BLINK_MS) {
+        const half = BLINK_MS / 2;
+        lidCoverage = t < half ? (t / half) : (1 - (t - half) / half);
+    }
+
+    if (now > nextGazeAt) {
+        gazeTargetX = (Math.random() - 0.5) * 0.7;
+        gazeTargetY = (Math.random() - 0.5) * 0.35;
+        nextGazeAt = now + 1800 + Math.random() * 2600;
+    }
+    gazeX += (gazeTargetX - gazeX) * 0.05;
+    gazeY += (gazeTargetY - gazeY) * 0.05;
+
+    drawFace(lidCoverage, gazeX * 34, gazeY * 22);
+    faceTex.needsUpdate = true;
+}
 
 function init() {
     const container = document.getElementById('webgl-container');
@@ -77,7 +157,6 @@ function init() {
     renderer.setClearColor(0x000000, 1); // Solid black for website background
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
     container.appendChild(renderer.domElement);
 
     // Environment Lighting
@@ -85,24 +164,30 @@ function init() {
     pmremGenerator.compileEquirectangularShader();
     scene.environment = pmremGenerator.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    // Previously way too bright/flat (1.5 key + 0.4 ambient + 1.15 exposure)
+    // — the body blew out to near-white and read as "dead", with nothing
+    // for the eye-glow to contrast against. Toned down across the board so
+    // the body has real shading and the eyes are the brightest thing in frame.
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
     dirLight.position.set(100, 200, 50);
     scene.add(dirLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.22);
     scene.add(ambientLight);
 
     // Low front fill aimed at the wheel: dark rubber tire on a near-black
     // backdrop otherwise reads as "missing" (a real bug found in an earlier
     // pass on the Studio scene — same fix needed here).
-    const wheelFill = new THREE.PointLight(0xbfd8ff, 2.2, 320, 2);
+    const wheelFill = new THREE.PointLight(0xbfd8ff, 1.4, 320, 2);
     wheelFill.position.set(40, -30, 160);
     scene.add(wheelFill);
+
+    renderer.toneMappingExposure = 0.95;
 
     // Composer
     composer = new THREE.EffectComposer(renderer);
     composer.addPass(new THREE.RenderPass(scene, camera));
-    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.40, 0.4, 0.82);
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.32, 0.4, 0.82);
     composer.addPass(bloomPass);
 
     // Real PBR maps, same set the app itself uses (FBX-embedded texture refs
@@ -113,30 +198,7 @@ function init() {
     const normalMap = texLoader.load('Textures/WheelBot_Body_Normal.png');
     const metalnessMap = texLoader.load('Textures/WheelBot_Body_Metallic.png');
 
-    // Static friendly face for the hero bot — the desktop app animates its
-    // eyes on a live canvas; here one hand-drawn frame of the same design
-    // (two glowing rounded-square eyes on a dark screen) is plenty.
-    function makeFaceTexture() {
-        const c = document.createElement('canvas');
-        c.width = c.height = 1024;
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#04140a';
-        ctx.fillRect(0, 0, 1024, 1024);
-        [364.5, 659.5].forEach(cx => {
-            ctx.save();
-            ctx.shadowColor = 'rgba(25,242,255,0.9)';
-            ctx.shadowBlur = 60;
-            ctx.fillStyle = '#19f2ff';
-            ctx.beginPath();
-            ctx.roundRect(cx - 105, 512 - 105, 210, 210, 70);
-            ctx.fill();
-            ctx.restore();
-        });
-        const tex = new THREE.CanvasTexture(c);
-        tex.encoding = THREE.sRGBEncoding;
-        return tex;
-    }
-    const faceTex = makeFaceTexture();
+    initFaceTexture();
 
     // Load Model
     const loader = new THREE.FBXLoader();
@@ -348,9 +410,12 @@ function animate() {
         robot.rotation.x = mouseY * 0.06;
 
         // Live color/accessory cycle while the "Dein Bot, dein Stil" section
-        // is the active (or immediately adjacent) keyframe — an animated
-        // demo of Studio customization instead of a static screenshot.
-        const styleActive = progress > 1.4 && progress < 2.6;
+        // is in view. Bug fixed here: the active window used to end at
+        // progress 2.6, but getSectionProgress() keeps counting up to ~3.0
+        // while still inside that same section — so the cycle was silently
+        // turning itself off (and resetting to the default look) for the
+        // last ~40% of the time actually spent scrolled into that section.
+        const styleActive = progress > 1.5 && progress < 3.15;
         if (styleActive && bodyBaseMat && bodyBlueMat) {
             styleLookTimer += delta;
             if (styleLookTimer > STYLE_LOOK_HOLD) {
@@ -359,10 +424,7 @@ function animate() {
                 const look = STYLE_LOOKS[styleLookIndex];
                 targetColor.body.setHex(look.body);
                 targetColor.blue.setHex(look.blue);
-                robot.traverse(c => {
-                    if (c.name === 'Acessory_Ear_1_Left' || c.name === 'Acessory_Ear_1_Right') c.visible = look.ears;
-                    if (c.name === 'Acessory_VR_Glasses') c.visible = look.glasses;
-                });
+                applyAccessoryLook(look);
             }
             bodyBaseMat.color.lerp(targetColor.body, 0.04);
             bodyBlueMat.color.lerp(targetColor.blue, 0.04);
@@ -370,7 +432,7 @@ function animate() {
             // Outside the customization section, ease back to the default
             // look (and reset the cycle) so later sections ("Federleicht",
             // Download) show the bot's standard look rather than whatever
-            // random accessory/color the cycle happened to land on.
+            // look the cycle happened to land on.
             styleLookIndex = 0;
             styleLookTimer = 0;
             const def = STYLE_LOOKS[0];
@@ -378,13 +440,11 @@ function animate() {
             targetColor.blue.setHex(def.blue);
             bodyBaseMat.color.lerp(targetColor.body, 0.03);
             bodyBlueMat.color.lerp(targetColor.blue, 0.03);
-            robot.traverse(c => {
-                if (c.name === 'Acessory_Ear_1_Left' || c.name === 'Acessory_Ear_1_Right') c.visible = def.ears;
-                if (c.name === 'Acessory_VR_Glasses') c.visible = def.glasses;
-            });
+            applyAccessoryLook(def);
         }
     }
 
+    updateFace(performance.now());
     composer.render();
 }
 
