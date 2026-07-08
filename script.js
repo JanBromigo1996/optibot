@@ -178,33 +178,48 @@ let baseRobotScale = 1;
 let popScale = 1, popScaleVel = 0;
 let popKick = 0, popKickVel = 0;
 
-// Coefficients roughly doubled — this physics existed but was subtle
-// enough (0.003-0.1 range against a jiggleY that itself rarely exceeds a
-// handful of units) to read as basically static, reported as "accessory
-// physics should also be animated" despite already being wired up.
-function updateAccessoryPhysics(robotObj, jiggleY, popKick) {
+// Real bug (not just "too subtle"): this set each accessory's rotation/
+// position as a *direct* function of the current jiggleY/popKick, with no
+// velocity or momentum of its own — so it rigidly tracked the head instead
+// of trailing behind it with lag/overshoot, which is what actually reads as
+// "physics" to the eye. The sister desktop-app project's own
+// updateAccessoryPhysics (index.html) already does this correctly via a
+// damped spring per accessory; ported the same idiom here instead of just
+// scaling the old proportional coefficients up again.
+function updateAccessoryPhysics(robotObj, jiggleY, popKick, dt) {
+    const k = 150, d = 11;
     robotObj.traverse(c => {
         if (c.name.startsWith('Acessory_')) {
             if (!c.userData.basePos) {
                 c.userData.basePos = c.position.clone();
                 c.userData.baseRot = c.rotation.clone();
+                c.userData.physZ = 0; c.userData.physVelZ = 0;
+                c.userData.physY = 0; c.userData.physVelY = 0;
             }
             if (c.name.includes('Ear')) {
-                const flop = jiggleY * 0.011 + popKick * 0.5;
                 const sign = c.name.includes('Right') ? -1 : 1;
-                c.rotation.z = c.userData.baseRot.z + flop * sign;
+                const target = (jiggleY * 0.05 + popKick * 1.4) * sign;
+                c.userData.physVelZ += (k * (target - c.userData.physZ) - d * c.userData.physVelZ) * dt;
+                c.userData.physZ += c.userData.physVelZ * dt;
+                c.rotation.z = c.userData.baseRot.z + c.userData.physZ;
             } else if (c.name.includes('Antenna')) {
-                const bend = jiggleY * 0.007 - Math.abs(popKick)*0.3;
-                c.rotation.x = c.userData.baseRot.x + bend;
-                c.rotation.z = c.userData.baseRot.z + popKick * 1.2;
+                const target = jiggleY * 0.03 - Math.abs(popKick) * 0.9;
+                c.userData.physVelZ += (k * (target - c.userData.physZ) - d * c.userData.physVelZ) * dt;
+                c.userData.physZ += c.userData.physVelZ * dt;
+                c.rotation.x = c.userData.baseRot.x + c.userData.physZ;
+                c.rotation.z = c.userData.baseRot.z + popKick * 1.4;
             } else if (c.name.includes('Witchhat')) {
-                const bounce = Math.max(0, -jiggleY * 0.2);
-                c.position.y = c.userData.basePos.y + bounce;
-                c.rotation.z = c.userData.baseRot.z + popKick * 0.5;
+                const target = Math.max(0, -jiggleY * 0.8);
+                c.userData.physVelY += (k * (target - c.userData.physY) - d * c.userData.physVelY) * dt;
+                c.userData.physY += c.userData.physVelY * dt;
+                c.position.y = c.userData.basePos.y + c.userData.physY;
+                c.rotation.z = c.userData.baseRot.z + popKick * 0.7;
             } else if (c.name.includes('Glasses')) {
-                const lagY = jiggleY * 0.1;
-                c.position.y = c.userData.basePos.y - lagY;
-                c.position.z = c.userData.basePos.z + Math.abs(lagY)*0.5;
+                const target = -jiggleY * 0.3;
+                c.userData.physVelY += (k * (target - c.userData.physY) - d * c.userData.physVelY) * dt;
+                c.userData.physY += c.userData.physVelY * dt;
+                c.position.y = c.userData.basePos.y + c.userData.physY;
+                c.position.z = c.userData.basePos.z + Math.abs(c.userData.physY) * 0.5;
             }
         }
     });
@@ -368,7 +383,10 @@ function createExtraBots() {
         // story — this single line is what actually fixes the ~10fps
         // multi-bot-section stutter.
         const fc = new FaceController(256);
-        const emotions = ['joy', 'sadness', 'anger', 'glitch', 'heart', 'neutral'];
+        // Real app Studio eye-style preset names (see EYE_STYLE_BOOST/SHAPES
+        // above) — the lineup now showcases the exact same presets a user
+        // can actually pick, not a separate lookalike set.
+        const emotions = ['Happy', 'Tired', 'Angry', 'Glitch', 'Heart', 'Normal'];
         fc.currentEmotion = emotions[i % emotions.length];
         clone.userData.faceController = fc;
         
@@ -454,7 +472,7 @@ function updateExtraBots(dt, active, centerX, centerY) {
         bot.position.y = centerY + Math.sin(now * motion.bobFreq + bot.userData.phase) * motion.bobAmp;
         bot.rotation.y = Math.sin(now * motion.turnFreq + bot.userData.phase) * motion.turnAmp;
         bot.rotation.z = bot.userData.popKick || 0;
-        updateAccessoryPhysics(bot, 0, bot.userData.popKick || 0);
+        updateAccessoryPhysics(bot, 0, bot.userData.popKick || 0, dt);
     });
 }
 
@@ -463,30 +481,84 @@ function updateExtraBots(dt, active, centerX, centerY) {
 // (blink + a slow wandering gaze) instead of one static drawn-once frame,
 // which read as "dead" with no motion at all in the face.
 // ------------------------------------------------------------------
-// Per-emotion eye-shape parameters for FaceController.drawFace — real bug
-// fix: this was called but never defined anywhere, throwing a
-// ReferenceError on the very first drawn frame. Since that happened inside
-// the render loop (not guarded), the exception killed the whole rAF loop
-// permanently after one frame — the canvas never cleared again, so
-// whatever had last been drawn (e.g. the multi-bot lineup) stayed frozen
-// on screen as "ghosts" behind every later section, and the camera never
-// moved again either, since animate() itself had died.
-function getEmotionParams(emotion) {
-    switch (emotion) {
-        case 'joy':
-            return { scaleY: 0.82, skewX: 0, curveTop: 0.55, curveBottom: -0.35, isGlitch: false, isHeart: false };
-        case 'sadness':
-            return { scaleY: 1.1, skewX: 0.14, curveTop: 0.22, curveBottom: -0.08, isGlitch: false, isHeart: false };
-        case 'anger':
-            return { scaleY: 0.6, skewX: 0.32, curveTop: 0.3, curveBottom: 0.12, isGlitch: false, isHeart: false };
-        case 'glitch':
-            return { scaleY: 1.0, skewX: 0, curveTop: 0, curveBottom: 0, isGlitch: true, isHeart: false };
-        case 'heart':
-            return { scaleY: 1.0, skewX: 0, curveTop: 0, curveBottom: 0, isGlitch: false, isHeart: true };
-        case 'neutral':
-        default:
-            return { scaleY: 1.0, skewX: 0, curveTop: 0, curveBottom: 0, isGlitch: false, isHeart: false };
+// Real bug fix (kept from the original comment below): drawFace used to
+// call an undefined getEmotionParams, throwing on the very first frame and
+// permanently killing the whole rAF loop. Beyond just fixing the crash,
+// this eye system was also its own separate skew/curve approximation that
+// had visibly drifted from what the real desktop app actually renders —
+// "the eyes are different [from the app], make it represent what's really
+// there". Replaced with the app's actual 8-point SHAPES outlines (src/
+// index.html) rendered through the same Catmull-Rom curve, named after the
+// app's real Studio eye-style presets so the website's emotion-cycling
+// showcases the exact same looks a user can pick, not a lookalike.
+const SHAPES = {
+    Normal: [ [0,-1], [0.8,-0.8], [1,0], [0.8,0.8], [0,1], [-0.8,0.8], [-1,0], [-0.8,-0.8] ],
+    Blink:  [ [0,-0.1], [0.8,-0.05], [1,0], [0.8,0.05], [0,0.1], [-0.8,0.05], [-1,0], [-0.8,-0.05] ],
+    Happy:  [ [0,-0.8], [0.9,-0.6], [1,-0.2], [0.8,0.2], [0,0.1], [-0.8,0.2], [-1,-0.2], [-0.9,-0.6] ],
+    Angry:  [ [0,-0.3], [0.9,-0.8], [1,0], [0.8,0.8], [0,1], [-0.8,0.8], [-1,0], [-0.5,-0.1] ],
+    Bored:  [ [0,-0.2], [0.8,-0.2], [1,0.2], [0.8,0.6], [0,0.8], [-0.8,0.6], [-1,0.2], [-0.8,-0.2] ],
+    Tired:  [ [0,-0.1], [0.8,-0.1], [1,0.3], [0.8,0.8], [0,0.9], [-0.8,0.8], [-1,0.3], [-0.8,-0.1] ],
+    Heart:  [ [0,-0.4], [0.6,-0.8], [1,-0.2], [0.5,0.4], [0,1], [-0.5,0.4], [-1,-0.2], [-0.6,-0.8] ],
+    Glitch: [ [0,-1], [0.8,-0.8], [1,0], [0.8,0.8], [0,1], [-0.8,0.8], [-1,0], [-0.8,-0.8] ],
+    Surprised: [ [0,-1], [0.85,-0.85], [1,0], [0.85,0.85], [0,1], [-0.85,0.85], [-1,0], [-0.85,-0.85] ]
+};
+// Matches the app's EXPR boost values — an overall eye-size nudge per
+// style, layered on top of the shape itself (e.g. Heart/Surprised read as
+// a touch bigger, Tired a touch smaller).
+const EYE_STYLE_BOOST = { Normal: 0, Happy: 0, Angry: -0.02, Bored: -0.03, Tired: -0.06, Heart: 0.1, Glitch: 0, Surprised: 0.16 };
+
+// Same Catmull-Rom-to-Bezier closed-loop fill as the app's drawEyeShape,
+// plus the app's own clipped glitch-band treatment for the Glitch style.
+function drawEyeShapePoly(ctx, cx, cy, radius, points, colorCss, now, idx, isGlitch, seed) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.beginPath();
+    const n = points.length;
+    const tension = 0.5;
+    const disp = [];
+    for (let i = 0; i < n; i++) {
+        const wobbleX = Math.sin(now * 0.003 + i + idx + seed) * 0.015;
+        const wobbleY = Math.cos(now * 0.002 + i + idx + seed) * 0.015;
+        disp.push([points[i][0] + wobbleX, points[i][1] + wobbleY]);
     }
+    for (let i = 0; i < n; i++) {
+        const p0 = disp[(i - 1 + n) % n];
+        const p1 = disp[i];
+        const p2 = disp[(i + 1) % n];
+        const p3 = disp[(i + 2) % n];
+        const cp1x = p1[0] + (p2[0] - p0[0]) * tension / 3;
+        const cp1y = p1[1] + (p2[1] - p0[1]) * tension / 3;
+        const cp2x = p2[0] - (p3[0] - p1[0]) * tension / 3;
+        const cp2y = p2[1] - (p3[1] - p1[1]) * tension / 3;
+        if (i === 0) ctx.moveTo(p1[0] * radius, p1[1] * radius);
+        ctx.bezierCurveTo(cp1x * radius, cp1y * radius, cp2x * radius, cp2y * radius, p2[0] * radius, p2[1] * radius);
+    }
+    ctx.closePath();
+    ctx.fillStyle = colorCss;
+    ctx.shadowColor = colorCss;
+    ctx.shadowBlur = isGlitch ? 0 : 55;
+    ctx.fill();
+    if (isGlitch) {
+        ctx.clip();
+        const bands = 5;
+        // Reported as too strong and running too long — this re-rolled
+        // Math.random() every single frame, so a Glitch-styled bot strobed
+        // continuously and hard for as long as it stayed on screen. Held
+        // shift per ~140ms tick (deterministic hash instead of Math.random,
+        // so it doesn't need any extra state) plus a smaller amplitude reads
+        // as an occasional brief flicker instead of nonstop chaos.
+        const glitchTick = Math.floor(now / 140);
+        for (let i = 0; i < bands; i++) {
+            const bY = -radius + (i / bands) * (radius * 2);
+            const bH = (radius * 2) / bands;
+            const pseudo = Math.sin(glitchTick * 12.9898 + i * 78.233) * 43758.5453;
+            const shiftFrac = (pseudo - Math.floor(pseudo)) - 0.5;
+            const shiftX = shiftFrac * 0.08 * radius;
+            ctx.fillStyle = i % 2 === 0 ? colorCss : '#ff0055';
+            ctx.fillRect(-radius + shiftX, bY, radius * 2, bH);
+        }
+    }
+    ctx.restore();
 }
 
 class FaceController {
@@ -519,8 +591,16 @@ class FaceController {
         this.gazeTargetX = 0;
         this.gazeTargetY = 0;
         this.nextGazeAt = now + 500 + Math.random() * 2000;
+        // Real bug: the eye-outline liquid wobble (drawEyeShapePoly) only
+        // ever depended on the shared performance.now() plus the eye's own
+        // index (0/1 for left/right) — nothing per *bot* — so every bot's
+        // eyes wobbled in exact lockstep, which read as "all animations are
+        // synchronized" despite blink/gaze/bob/turn already being properly
+        // randomized per instance. One random seed per FaceController,
+        // folded into that phase, desyncs it the same way.
+        this.wobbleSeed = Math.random() * 1000;
 
-        this.currentEmotion = 'neutral';
+        this.currentEmotion = 'Normal';
 
         this.displayPageIndex = 0;
         this.displayPageTimer = 0;
@@ -540,78 +620,33 @@ class FaceController {
         ctx.fillStyle = '#04140a';
         ctx.fillRect(0, 0, 1024, 1024);
 
-        const baseW = 210, baseH = 210;
-        const eyeW = baseW * Math.max(0.3, scaleX);
-        
-        const ep = getEmotionParams(this.currentEmotion);
-        const effScaleY = scaleY * ep.scaleY;
-        const eyeH = Math.max(10, baseH * Math.max(0.05, effScaleY) * (1 - lidCoverage));
-        const eyeY = 512 - eyeH / 2;
-        
-        const glow = 55 + effScaleY * 30 + eyeW * 0.05;
+        const baseRadius = 105; // matches the old baseW/2=210/2
+        const boost = EYE_STYLE_BOOST[this.currentEmotion] !== undefined ? EYE_STYLE_BOOST[this.currentEmotion] : 0;
+        const radius = baseRadius * (1 + boost) * Math.max(0.3, scaleX) * Math.max(0.3, scaleY);
+        const eyeW = radius * 2, eyeH = radius * 2; // kept for the highlight/pupil sizing below
+
+        // Blend toward the Blink shape for a real closing-eyelid outline
+        // instead of the old flat height-squash — exactly how the app
+        // itself blinks (see its blinkPhase point-blending).
+        const baseShape = SHAPES[this.currentEmotion] || SHAPES.Normal;
+        const shapePoints = baseShape.map((p, i) => {
+            const blinkP = SHAPES.Blink[i];
+            return [ p[0] + (blinkP[0] - p[0]) * lidCoverage, p[1] + (blinkP[1] - p[1]) * lidCoverage ];
+        });
+        const isGlitch = this.currentEmotion === 'Glitch';
+        const isHeart = this.currentEmotion === 'Heart';
 
         const now = performance.now();
-        
-        [364.5, 659.5].forEach((cx, idx) => {
-            const isRight = idx === 1;
-            const ex = cx - eyeW / 2 + offsetX;
-            const ey = eyeY + offsetY;
-            
-            ctx.save();
-            ctx.shadowColor = 'rgba(25,242,255,0.9)';
-            ctx.shadowBlur = glow;
-            ctx.fillStyle = '#19f2ff';
-            
-            if (ep.isGlitch) {
-                ctx.shadowBlur = 0;
-                const bands = 5;
-                for(let i=0; i<bands; i++) {
-                    const bY = ey + (i/bands)*eyeH;
-                    const bH = eyeH/bands;
-                    const shiftX = (Math.random()-0.5)*20;
-                    ctx.fillStyle = i%2===0 ? '#19f2ff' : '#ff0055';
-                    ctx.beginPath();
-                    ctx.roundRect(ex + shiftX, bY, eyeW, bH, 10);
-                    ctx.fill();
-                }
-            } else if (ep.isHeart) {
-                const centerX = cx + offsetX;
-                const centerY = 512 + offsetY;
-                const hw = eyeW*0.6, hh = eyeH*0.6;
-                ctx.beginPath();
-                const topY = centerY - hh*0.5;
-                ctx.moveTo(centerX, topY);
-                ctx.bezierCurveTo(centerX, topY - hh*0.5, centerX - hw, topY - hh*0.5, centerX - hw, topY);
-                ctx.bezierCurveTo(centerX - hw, topY + hh*0.5, centerX, topY + hh*0.8, centerX, centerY + hh*0.8);
-                ctx.bezierCurveTo(centerX, topY + hh*0.8, centerX + hw, topY + hh*0.5, centerX + hw, topY);
-                ctx.bezierCurveTo(centerX + hw, topY - hh*0.5, centerX, topY - hh*0.5, centerX, topY);
-                ctx.fill();
-            } else {
-                ctx.beginPath();
-                const wobbleX = Math.sin(now * 0.003 + idx) * 8;
-                const wobbleY = Math.cos(now * 0.002 + idx) * 8;
-                
-                const rx = eyeW / 2;
-                const ry = eyeH / 2;
-                const skew = (isRight ? -ep.skewX : ep.skewX) * rx;
-                const centerX = cx + offsetX;
-                const centerY = 512 + offsetY;
-                
-                const pTL = { x: centerX - rx + skew + wobbleX, y: centerY - ry + ep.curveTop*ry + wobbleY };
-                const pTR = { x: centerX + rx + skew + wobbleX, y: centerY - ry + ep.curveTop*ry + wobbleY };
-                const pBR = { x: centerX + rx - skew + wobbleX, y: centerY + ry + ep.curveBottom*ry + wobbleY };
-                const pBL = { x: centerX - rx - skew + wobbleX, y: centerY + ry + ep.curveBottom*ry + wobbleY };
-                
-                ctx.moveTo(centerX - rx + wobbleX, centerY + wobbleY);
-                ctx.quadraticCurveTo(pTL.x, pTL.y, centerX + wobbleX, centerY - ry + ep.curveTop*ry + wobbleY);
-                ctx.quadraticCurveTo(pTR.x, pTR.y, centerX + rx + wobbleX, centerY + wobbleY);
-                ctx.quadraticCurveTo(pBR.x, pBR.y, centerX + wobbleX, centerY + ry + ep.curveBottom*ry + wobbleY);
-                ctx.quadraticCurveTo(pBL.x, pBL.y, centerX - rx + wobbleX, centerY + wobbleY);
-                ctx.fill();
-            }
-            ctx.restore();
 
-            if (scaleY > 1.0 && eyeH > 60 && !ep.isGlitch && !ep.isHeart) {
+        [364.5, 659.5].forEach((cx, idx) => {
+            const centerX = cx + offsetX;
+            const centerY = 512 + offsetY;
+            const ex = centerX - eyeW / 2;
+            const ey = centerY - eyeH / 2;
+
+            drawEyeShapePoly(ctx, centerX, centerY, radius, shapePoints, '#19f2ff', now, idx, isGlitch, this.wobbleSeed);
+
+            if (scaleY > 1.0 && eyeH > 60 && !isGlitch && !isHeart) {
                 const hlW = eyeW * 0.22, hlH = eyeH * 0.28;
                 ctx.save();
                 ctx.globalAlpha = Math.min(0.85, (scaleY - 1.0) * 4.5);
@@ -624,7 +659,7 @@ class FaceController {
                 ctx.restore();
             }
 
-            if (eyeH > 40 && !ep.isGlitch && !ep.isHeart) {
+            if (eyeH > 40 && !isGlitch && !isHeart) {
                 const pupilW = eyeW * 0.55, pupilH = eyeH * 0.55;
                 ctx.save();
                 ctx.globalAlpha = 0.25;
@@ -632,8 +667,8 @@ class FaceController {
                 ctx.beginPath();
                 const px = cx - pupilW / 2 + offsetX;
                 const py = ey + (eyeH - pupilH) / 2;
-                const wobbleX = Math.sin(now * 0.003 + idx) * 8;
-                const wobbleY = Math.cos(now * 0.002 + idx) * 8;
+                const wobbleX = Math.sin(now * 0.003 + idx + this.wobbleSeed) * 8;
+                const wobbleY = Math.cos(now * 0.002 + idx + this.wobbleSeed) * 8;
                 ctx.roundRect(px + wobbleX*0.5, py + wobbleY*0.5, pupilW, pupilH, Math.min(pupilW, pupilH) * 0.45);
                 ctx.fill();
                 ctx.restore();
@@ -1279,7 +1314,7 @@ function animate() {
         updateAccessoryPop(delta);
         robot.scale.setScalar(baseRobotScale * popScale);
         robot.rotation.z = popKick;
-        updateAccessoryPhysics(robot, jiggleY, popKick);
+        updateAccessoryPhysics(robot, jiggleY, popKick, delta);
 
         // Live color/accessory cycle while the "Dein Bot, dein Stil" section
         // is in view — a little squash-and-kick "pop" (see triggerAccessoryPop)

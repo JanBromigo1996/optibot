@@ -296,16 +296,16 @@
             <h2><span class="icon-chip" style="--chip-bg:rgba(176,107,255,0.15); --chip-fg:#c19bff; --chip-ring:rgba(176,107,255,0.25)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 100 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-.9.7-1.5 1.5-1.5H16a4 4 0 004-4c0-4.4-3.6-8-8-8z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="8" cy="10.5" r="1.1" fill="currentColor"/><circle cx="11.5" cy="7.5" r="1.1" fill="currentColor"/><circle cx="15.5" cy="9.5" r="1.1" fill="currentColor"/></svg></span>OptiBot Studio</h2>
             <p>Das Studio ist deine Tuning-Werkstatt. Öffne es per <b>Doppelklick auf das Taskleisten-Icon</b> oder über das Menü („OptiBot Studio öffnen").</p>
             <ul>
-                <li><b>Kategorie-Leiste:</b> Die drei Symbole links am Panel wechseln zwischen Bot &amp; Engine, Farbe &amp; Material und Accessoires — wie bei einem echten Charakter-Editor.</li>
+                <li><b>Kategorie-Leiste:</b> Die drei Symbole rechts am Panel wechseln zwischen Bot &amp; Engine, Farbe &amp; Material und Accessoires — wie bei einem echten Charakter-Editor.</li>
                 <li><b>Teile lackieren:</b> Klicke ein Körperteil direkt am 3D-Modell an (oder wähle es im Farbe-Tab) und such dir eine Farbe aus — Änderungen erscheinen sofort auf dem echten Bot.</li>
                 <li><b>Accessoires:</b> Ziehe Hexenhut, Antenne, Ohren, VR-Brille oder ein anderes Rad einfach per Drag &amp; Drop auf den Bot, oder klicke die Kachel an.</li>
-                <li><b>Materialien:</b> Von Chrome über Carbon bis Gloss — echte Oberflächen-Presets mit realistischen Reflexionen.</li>
+                <li><b>Materialien pro Teil:</b> Von Chrome über Carbon bis Gloss — echte Oberflächen-Presets mit realistischen Reflexionen. Die „Oberfläche"-Auswahl gilt für das gerade ausgewählte Teil, also lassen sich z. B. Körper und Rad unterschiedlich einstellen statt nur eine Oberfläche für den ganzen Bot.</li>
                 <li><b>Umgebungslicht:</b> Sunset, Night, Neon, Cinematic oder Studio — bestimmt, wie sich Licht auf dem Bot spiegelt.</li>
+                <li><b>Speichern:</b> Jede Änderung wird sofort automatisch gesichert — der „Speichern"-Button bestätigt das nur noch einmal sichtbar. Separate Profile gibt es nicht, nur deine 5 Bots (siehe unten).</li>
             </ul>
             <div class="doc-img-row">
                 <img class="doc-img" src="anleitung_studio1.png" alt="OptiBot Studio: Übersicht mit Inspector-Panel">
                 <img class="doc-img" src="anleitung_studio2.png" alt="OptiBot Studio: Bot mit Accessoires und Farben">
-                <img class="doc-img" src="anleitung_studio3.png" alt="OptiBot Studio: Bibliothek mit gespeicherten Looks">
             </div>
         </section>
 
@@ -313,8 +313,8 @@
             <h2><span class="icon-chip" style="--chip-bg:rgba(255,46,138,0.14); --chip-fg:#ff6fb0; --chip-ring:rgba(255,46,138,0.24)"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="4" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="4" y="13" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="13" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.7"/></svg></span>Mehrere Bots</h2>
             <p>Du kannst bis zu <b>fünf Bots gleichzeitig</b> auf dem Desktop haben — jeder mit eigenem Look und eigener Aufgabe.</p>
             <ul>
-                <li>Im Studio wählst du unten in der Werkzeugleiste über die <b>farbigen Bot-Kacheln</b> aus, welchen Bot du gerade bearbeitest — wie bei einer Charakterauswahl. Die gestrichelte Kachel spawnt einen neuen Bot; über einer Kachel erscheint beim Hovern ein <b>×</b>, um sie zu entfernen.</li>
-                <li><b>Bibliothek:</b> Über den Bibliothek-Button im Dock öffnest du eine Kartenübersicht all deiner gespeicherten Looks (mit Farbvorschau). Klick auf eine Karte lädt den Look zum Bearbeiten, das Raketen-Symbol spawnt ihn direkt als neuen Bot, das Papierkorb-Symbol löscht ihn.</li>
+                <li>Oben im Studio, direkt unter „Dein OptiBot", wählst du über die <b>farbigen Bot-Kacheln</b> aus, welchen Bot du gerade bearbeitest — wie bei einer Charakterauswahl. Es gibt genau <b>5 feste Bot-Plätze</b>, keine separaten Profile: Jeder Platz behält seinen eigenen Look dauerhaft.</li>
+                <li>Die gestrichelte Kachel („+") holt einen weiteren Bot auf den Desktop. Zum Entfernen kurz über die letzte Kachel fahren — darunter erscheint nach kurzer Verzögerung ein „Entfernen"-Button, mit Sicherheitsabfrage. Der Look bleibt dabei gespeichert; über „+" kannst du den Bot jederzeit wieder zurückholen.</li>
                 <li>Jeder Bot hat eine <b>Rolle</b> (Auto, Work oder Play): Er reagiert sichtbar, wenn die Smart Engine „seinen" Modus aktiviert — so siehst du auf einen Blick, was dein System gerade macht.</li>
             </ul>
             <img class="doc-img" src="anleitung_multibot.png" alt="Bis zu fünf OptiBots gleichzeitig, jeder mit eigenem Look">
@@ -325,7 +325,7 @@
             <ul>
                 <li><b>Verbraucht OptiBot viel Leistung?</b> Nein. Die 3D-Anzeige ist stark optimiert, und sobald du den Bot ausblendest, drosselt er sich auf nahezu null.</li>
                 <li><b>Warum braucht OptiBot Admin-Rechte?</b> RAM-Bereinigung und das Umschalten von Windows-Energieplänen sind Systemfunktionen — ohne Administratorrechte darf kein Programm sie ausführen.</li>
-                <li><b>Wo liegen meine Einstellungen?</b> Direkt im Installationsordner (Settings.txt, Profiles.txt, BotSlots.txt) — beim Deinstallieren einfach den Ordner löschen, fertig.</li>
+                <li><b>Wo liegen meine Einstellungen?</b> Direkt im Installationsordner (Settings.txt, BotSlots.txt) — beim Deinstallieren einfach den Ordner löschen, fertig.</li>
                 <li><b>Wie deinstalliere ich OptiBot?</b> OptiBot ist eine vollwertige Windows-App: Windows-Einstellungen &rarr; Apps &rarr; OptiBot &rarr; Deinstallieren (oder Systemsteuerung &rarr; Programme). Entfernt Installationsordner, Verknüpfungen und den Autostart-Eintrag automatisch.</li>
             </ul>
         </section>
