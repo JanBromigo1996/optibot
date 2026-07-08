@@ -17,7 +17,7 @@ document.querySelectorAll('.slide-up').forEach(el => observer.observe(el));
 // Three.js Setup
 let scene, camera, renderer, composer, bloomPass, robot, mixer;
 let bodyBaseMat, bodyBlueMat, bodySidesMat, accentLight;
-let mainFaceController;
+let mainFaceController, mainFaceMat;
 const clock = new THREE.Clock();
 
 // Page-wide design elements (progress bar, ambient color wash, hero scroll
@@ -135,18 +135,26 @@ const KEYFRAMES = RAW_KEYFRAMES.map(k => ({
 // look now gives it its own trim shade, cohesive with but distinct from
 // the body color, matching how the real Studio treats "Körper (Seiten)"
 // as its own colorable part.
+// Body colors punched up further — reported as still not vivid/"knallig"
+// enough (0x9aa0a6 was a flat desaturated gray, 0xffffff/0xf5f5f7 are
+// technically "clean" but read as no-color next to the others in a fast
+// cycle). Every look now carries a real saturated hue.
 const STYLE_LOOKS = [
     { body: 0xffffff, blue: 0x0057ff, sides: 0xf2f2f4, ears: false, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Standard' },
     { body: 0xff2d1e, blue: 0x161616, sides: 0x1c1c1e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
     { body: 0x0046ff, blue: 0xffffff, sides: 0xe3e3e8, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' },
-    { body: 0xf5f5f7, blue: 0x00e5a8, sides: 0xd6d6da, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
+    { body: 0x00c896, blue: 0x00e5a8, sides: 0x00997a, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
     { body: 0x1c1c1e, blue: 0xffb800, sides: 0x2c2c2e, ears: false, glasses: false, hat: true, antenna: false, wheel1: true, material: 'Matte' },
-    { body: 0x9aa0a6, blue: 0x00d4ff, sides: 0x6e7378, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
-    { body: 0xffffff, blue: 0xff2e8a, sides: 0xf2f2f4, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
+    { body: 0x8a2be2, blue: 0x00d4ff, sides: 0x6a1fb8, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
+    { body: 0xffe600, blue: 0xff2e8a, sides: 0xd6c400, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
 ];
 let styleLookIndex = 0;
 let styleLookTimer = 0;
-const STYLE_LOOK_HOLD = 1.4; // seconds per look — was 2.2s, reported as too slow
+// Tightened again (was 2.2s, then 1.4s) — still read as "starts too slowly"
+// paired with the 0.07 color-lerp rate below, which alone took nearly half
+// this hold time just to visually arrive at the new color, leaving little
+// time actually sitting at full saturation before cycling again.
+const STYLE_LOOK_HOLD = 1.0;
 const targetColor = { body: new THREE.Color(0xffffff), blue: new THREE.Color(0x2a4fd6), sides: new THREE.Color(0xf2f2f4) };
 let targetMaterialName = 'Standard';
 
@@ -170,6 +178,10 @@ let baseRobotScale = 1;
 let popScale = 1, popScaleVel = 0;
 let popKick = 0, popKickVel = 0;
 
+// Coefficients roughly doubled — this physics existed but was subtle
+// enough (0.003-0.1 range against a jiggleY that itself rarely exceeds a
+// handful of units) to read as basically static, reported as "accessory
+// physics should also be animated" despite already being wired up.
 function updateAccessoryPhysics(robotObj, jiggleY, popKick) {
     robotObj.traverse(c => {
         if (c.name.startsWith('Acessory_')) {
@@ -178,19 +190,19 @@ function updateAccessoryPhysics(robotObj, jiggleY, popKick) {
                 c.userData.baseRot = c.rotation.clone();
             }
             if (c.name.includes('Ear')) {
-                const flop = jiggleY * 0.005 + popKick * 0.5;
+                const flop = jiggleY * 0.011 + popKick * 0.5;
                 const sign = c.name.includes('Right') ? -1 : 1;
                 c.rotation.z = c.userData.baseRot.z + flop * sign;
             } else if (c.name.includes('Antenna')) {
-                const bend = jiggleY * 0.003 - Math.abs(popKick)*0.3;
+                const bend = jiggleY * 0.007 - Math.abs(popKick)*0.3;
                 c.rotation.x = c.userData.baseRot.x + bend;
                 c.rotation.z = c.userData.baseRot.z + popKick * 1.2;
             } else if (c.name.includes('Witchhat')) {
-                const bounce = Math.max(0, -jiggleY * 0.1);
+                const bounce = Math.max(0, -jiggleY * 0.2);
                 c.position.y = c.userData.basePos.y + bounce;
                 c.rotation.z = c.userData.baseRot.z + popKick * 0.5;
             } else if (c.name.includes('Glasses')) {
-                const lagY = jiggleY * 0.05;
+                const lagY = jiggleY * 0.1;
                 c.position.y = c.userData.basePos.y - lagY;
                 c.position.z = c.userData.basePos.z + Math.abs(lagY)*0.5;
             }
@@ -849,6 +861,7 @@ function init() {
                         clearcoat: 0.7, clearcoatRoughness: 0.08
                     });
                     nm.name = 'wheelbot_face'; // kept identifiable post-clone(); see getBodyMats
+                    mainFaceMat = nm;
                 } else if (name.includes('body_blue')) {
                     nm = new THREE.MeshPhysicalMaterial({
                         color: 0x2a4fd6, normalMap: normalMap, metalnessMap: metalnessMap,
@@ -956,12 +969,52 @@ let sectionCenters = [];
 let cachedMaxScroll = 1;
 function cacheSectionCenters() {
     const sections = SECTION_IDS.map(id => document.getElementById(id)).filter(Boolean);
-    sectionCenters = sections.map(el => {
+    // Real bug, reported as "OptiBot always ends up past the text field":
+    // this cached each section's CENTER, and getSectionProgress mapped
+    // progress=N to the moment section N's center hit the viewport's
+    // center. For an 85vh section that means scrolling roughly another
+    // half-section further than where the section's *text* actually
+    // reveals (the reveal IntersectionObserver fires at threshold 0.01 —
+    // essentially the instant any sliver of the section is visible). The
+    // camera/bot — and the FaceController's active-section display page —
+    // stayed on the *previous* section's framing for that whole gap, which
+    // is exactly what let a "Federleicht" screenshot still show the stats
+    // section's readout bleeding through behind the text. Caching each
+    // section's TOP instead, with getSectionProgress mapping progress=N to
+    // "section N's top reaches the viewport's top" (the same anchor this
+    // project used successfully before it got changed to center-based),
+    // tracks scroll position closely enough to match when text is actually
+    // visible instead of trailing behind it.
+    // How far "into" the viewport (from the top, as a fraction of viewport
+    // height) a section's own top needs to scroll before the camera starts
+    // treating it as the active section. Measured the actual gap this was
+    // meant to close: the text-reveal observer fires the instant any sliver
+    // of a section is visible (effectively when its top touches the
+    // *bottom* of the viewport), but the camera used to wait until a full
+    // viewport height later — the bot kept showing the previous section's
+    // framing (and, for section-stats, its stat-page display) well after
+    // that section's own text had already fully faded in. 0.8 starts the
+    // camera responding once a section has scrolled 80% of the way up the
+    // viewport (i.e. it's just begun appearing in the bottom ~20%) — close
+    // enough behind the text reveal to not visibly lag, without snapping
+    // the camera to a section that isn't substantially on screen yet.
+    //
+    // Real bug from the first version of this fix: applying that shift to
+    // every section INCLUDING the hero (index 0) broke the page's resting
+    // state — hero is already fully visible at scrollY=0 by definition (no
+    // "scrolling up from below" for it to lag behind), so shifting its
+    // threshold made progress jump to ~0.8 before the user had scrolled at
+    // all, overlapping the hero text with the *next* section's framing.
+    // Only sections 1+ get the early-trigger shift; section 0's threshold
+    // stays exactly at 0 so scrollY=0 always maps to progress=0.
+    sectionCenters = sections.map((el, i) => {
         const rect = el.getBoundingClientRect();
-        return rect.top + rect.height / 2 + window.scrollY;
+        const top = rect.top + window.scrollY;
+        return i === 0 ? top : top - window.innerHeight * SECTION_TRIGGER_FRACTION;
     });
     cachedMaxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
 }
+const SECTION_TRIGGER_FRACTION = 0.45;
 cacheSectionCenters();
 window.addEventListener('resize', cacheSectionCenters);
 // Late-loading fonts/images can still reflow the page after first paint —
@@ -971,26 +1024,24 @@ window.addEventListener('load', cacheSectionCenters);
 function getSectionProgress() {
     if (sectionCenters.length === 0) return 0;
 
-    // We map progress=N to the exact moment the CENTER of section N hits the CENTER of the screen.
-    // This perfectly aligns the 3D bot's keyframes with the user's reading focus.
-    const scrollCenter = window.scrollY + window.innerHeight * 0.5;
+    const scrollTop = window.scrollY;
 
-    // Handle edge case: if we are above the center of the first section, pin to 0.
-    if (scrollCenter <= sectionCenters[0]) return 0;
+    // Handle edge case: if we are above the top of the first section, pin to 0.
+    if (scrollTop <= sectionCenters[0]) return 0;
 
     let idx = 0;
     for (let i = 0; i < sectionCenters.length; i++) {
-        if (scrollCenter >= sectionCenters[i]) idx = i;
+        if (scrollTop >= sectionCenters[i]) idx = i;
     }
 
     if (idx + 1 >= sectionCenters.length) return idx;
 
-    const curCenter = sectionCenters[idx];
-    const nextCenter = sectionCenters[idx + 1];
+    const curTop = sectionCenters[idx];
+    const nextTop = sectionCenters[idx + 1];
 
-    const span = Math.max(1, nextCenter - curCenter);
-    const frac = Math.max(0, Math.min(1, (scrollCenter - curCenter) / span));
-    
+    const span = Math.max(1, nextTop - curTop);
+    const frac = Math.max(0, Math.min(1, (scrollTop - curTop) / span));
+
     return idx + frac;
 }
 
@@ -1206,14 +1257,24 @@ function animate() {
         // section — reported feedback ("mehr Emotion und Umschauen").
         const lookAround = Math.sin(Date.now() * 0.00042) * 0.16 + Math.sin(Date.now() * 0.0011 + 2.1) * 0.06;
         const nod = Math.sin(Date.now() * 0.00065 + 1.7) * 0.05;
+        // At the very top (hero) and bottom (download) the bot sits small
+        // and should read as dead-center, facing straight at the camera —
+        // both those keyframes already script rotY=0, but the idle wobble
+        // and mouse-parallax terms below were added unconditionally on top
+        // regardless of section, so the bot still visibly turned away from
+        // center even at rest there. Fades those two additions out over the
+        // last ~0.6 progress-units approaching either end, full-strength
+        // everywhere else the bot is actively posed mid-page.
+        const KEYFRAME_MAX = KEYFRAMES.length - 1;
+        const bookendFactor = Math.max(0, Math.min(1, progress / 0.6, (KEYFRAME_MAX - progress) / 0.6));
         robot.position.x = curRobotX + jiggleX;
         // Idle breathing bob PLUS jiggle offset — the head trails scroll
         // and then overshoots back, layered on top of the constant breathe.
         robot.position.y = curRobotY + Math.sin(Date.now() * 0.0018) * 4 + jiggleY;
-        robot.rotation.y = curRotY + mouseX * 0.15 + lookAround;
+        robot.rotation.y = curRotY + (mouseX * 0.15 + lookAround) * bookendFactor;
         // Tilt forward slightly when scrolling down (head tips forward as if
         // leaning into the scroll), backward on scroll up — feels physical.
-        robot.rotation.x = mouseY * 0.06 + nod + jiggleY * 0.0025;
+        robot.rotation.x = (mouseY * 0.06 + nod) * bookendFactor + jiggleY * 0.0025;
 
         updateAccessoryPop(delta);
         robot.scale.setScalar(baseRobotScale * popScale);
@@ -1238,10 +1299,20 @@ function animate() {
                 applyAccessoryLook(look);
                 triggerAccessoryPop();
             }
-            bodyBaseMat.color.lerp(targetColor.body, 0.07);
-            bodyBlueMat.color.lerp(targetColor.blue, 0.07);
-            if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.07);
-            lerpMaterialTo(bodyMats, targetMaterialName, 0.08);
+            // Sped up from 0.07 — at that rate the color took nearly half of
+            // STYLE_LOOK_HOLD just to visually converge, so the cycle read as
+            // "always transitioning, never arriving" even after the hold
+            // time itself was shortened.
+            bodyBaseMat.color.lerp(targetColor.body, 0.16);
+            bodyBlueMat.color.lerp(targetColor.blue, 0.16);
+            if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.16);
+            lerpMaterialTo(bodyMats, targetMaterialName, 0.16);
+            // Eyes previously stayed a fixed cyan no matter which body
+            // color the cycle landed on — tint the face glow's emissive to
+            // match the current look's own accent color instead, so the
+            // "individual" identity a look conveys through body color
+            // carries through to the eyes too.
+            if (mainFaceMat) mainFaceMat.emissive.lerp(targetColor.blue, 0.16);
         } else if (bodyBaseMat && bodyBlueMat) {
             // Outside the customization section, ease back to the default
             // look (and reset the cycle) so later sections ("Federleicht",
@@ -1258,6 +1329,7 @@ function animate() {
             bodyBlueMat.color.lerp(targetColor.blue, 0.03);
             if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.03);
             lerpMaterialTo(bodyMats, targetMaterialName, 0.03);
+            if (mainFaceMat) mainFaceMat.emissive.lerp(targetColor.blue, 0.03);
             applyAccessoryLook(def);
         }
 
