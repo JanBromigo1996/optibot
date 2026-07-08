@@ -889,11 +889,18 @@ function init() {
                         color: 0x0e0e10, roughness: 0.92, metalness: 0.05
                     });
                 } else if (name === 'wheelbot_face') {
+                    // Real bug (same one found in the desktop app/Studio):
+                    // low roughness + a strong clearcoat made the display
+                    // act like a mirror under the scene lighting — as the
+                    // hero bot turns while scrolling, the specular highlight
+                    // visibly slides across the face as a bright streak,
+                    // easy to mistake for a glitch effect. A display should
+                    // glow, not shine; flattened the gloss.
                     nm = new THREE.MeshPhysicalMaterial({
                         map: mainFaceController.faceTex, emissiveMap: mainFaceController.faceTex,
                         emissive: 0xffffff, emissiveIntensity: 1.4,
-                        color: 0xffffff, roughness: 0.15, metalness: 0.6,
-                        clearcoat: 0.7, clearcoatRoughness: 0.08
+                        color: 0xffffff, roughness: 0.75, metalness: 0.1,
+                        clearcoat: 0.05, clearcoatRoughness: 0.6
                     });
                     nm.name = 'wheelbot_face'; // kept identifiable post-clone(); see getBodyMats
                     mainFaceMat = nm;
