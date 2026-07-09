@@ -17,7 +17,7 @@ document.querySelectorAll('.slide-up').forEach(el => observer.observe(el));
 // Three.js Setup
 let scene, camera, renderer, composer, bloomPass, robot, mixer;
 let bodyBaseMat, bodyBlueMat, bodySidesMat, accentLight;
-let mainFaceController;
+let mainFaceController, mainFaceMat;
 const clock = new THREE.Clock();
 
 // Page-wide design elements (progress bar, ambient color wash, hero scroll
@@ -82,7 +82,14 @@ const RAW_KEYFRAMES = [
     { camPos: [0, 0, 420], robotX: -65, robotY: -25, rotY: -0.32 },
     // multi-bot lineup — pulled back so all five fit in frame; the main bot
     // is the middle of the lineup, four clones fan out either side of it
-    { camPos: [0, 0, 1000], robotX: 0, robotY: -40, rotY: 0 },
+    // Real bug: this had no camLookYOverride, so camLook.y auto-tracked
+    // robotY via withBias — pushing robotY down also tilted the camera
+    // down by the same amount to compensate, nearly cancelling out any
+    // on-screen movement (confirmed: tripling the offset barely moved the
+    // lineup at all in testing). Fixing the look target here (at the
+    // original auto-computed value) means robotY now actually controls
+    // where the lineup lands in frame, clearing the paragraph text below.
+    { camPos: [0, 0, 1000], robotX: 0, robotY: -220, rotY: 0, camLookYOverride: 30 },
     // stats display — text on the left, bot (showing the display, not eyes)
     // drifts into the right half, framed a bit closer so the display reads
     { camPos: [0, 0, 360], robotX: 60, robotY: -10, rotY: 0.22 },
@@ -128,18 +135,26 @@ const KEYFRAMES = RAW_KEYFRAMES.map(k => ({
 // look now gives it its own trim shade, cohesive with but distinct from
 // the body color, matching how the real Studio treats "Körper (Seiten)"
 // as its own colorable part.
+// Body colors punched up further — reported as still not vivid/"knallig"
+// enough (0x9aa0a6 was a flat desaturated gray, 0xffffff/0xf5f5f7 are
+// technically "clean" but read as no-color next to the others in a fast
+// cycle). Every look now carries a real saturated hue.
 const STYLE_LOOKS = [
     { body: 0xffffff, blue: 0x0057ff, sides: 0xf2f2f4, ears: false, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Standard' },
     { body: 0xff2d1e, blue: 0x161616, sides: 0x1c1c1e, ears: true, glasses: false, hat: false, antenna: false, wheel1: false, material: 'Gloss' },
     { body: 0x0046ff, blue: 0xffffff, sides: 0xe3e3e8, ears: false, glasses: true, hat: false, antenna: false, wheel1: false, material: 'Chrome' },
-    { body: 0xf5f5f7, blue: 0x00e5a8, sides: 0xd6d6da, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
+    { body: 0x00c896, blue: 0x00e5a8, sides: 0x00997a, ears: true, glasses: true, hat: false, antenna: false, wheel1: true, material: 'Satin' },
     { body: 0x1c1c1e, blue: 0xffb800, sides: 0x2c2c2e, ears: false, glasses: false, hat: true, antenna: false, wheel1: true, material: 'Matte' },
-    { body: 0x9aa0a6, blue: 0x00d4ff, sides: 0x6e7378, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
-    { body: 0xffffff, blue: 0xff2e8a, sides: 0xf2f2f4, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
+    { body: 0x8a2be2, blue: 0x00d4ff, sides: 0x6a1fb8, ears: true, glasses: false, hat: false, antenna: true, wheel1: true, material: 'Chrome' },
+    { body: 0xffe600, blue: 0xff2e8a, sides: 0xd6c400, ears: false, glasses: true, hat: false, antenna: true, wheel1: false, material: 'Gloss' },
 ];
 let styleLookIndex = 0;
 let styleLookTimer = 0;
-const STYLE_LOOK_HOLD = 1.4; // seconds per look — was 2.2s, reported as too slow
+// Tightened again (was 2.2s, then 1.4s) — still read as "starts too slowly"
+// paired with the 0.07 color-lerp rate below, which alone took nearly half
+// this hold time just to visually arrive at the new color, leaving little
+// time actually sitting at full saturation before cycling again.
+const STYLE_LOOK_HOLD = 1.0;
 const targetColor = { body: new THREE.Color(0xffffff), blue: new THREE.Color(0x2a4fd6), sides: new THREE.Color(0xf2f2f4) };
 let targetMaterialName = 'Standard';
 
@@ -163,29 +178,48 @@ let baseRobotScale = 1;
 let popScale = 1, popScaleVel = 0;
 let popKick = 0, popKickVel = 0;
 
-function updateAccessoryPhysics(robotObj, jiggleY, popKick) {
+// Real bug (not just "too subtle"): this set each accessory's rotation/
+// position as a *direct* function of the current jiggleY/popKick, with no
+// velocity or momentum of its own — so it rigidly tracked the head instead
+// of trailing behind it with lag/overshoot, which is what actually reads as
+// "physics" to the eye. The sister desktop-app project's own
+// updateAccessoryPhysics (index.html) already does this correctly via a
+// damped spring per accessory; ported the same idiom here instead of just
+// scaling the old proportional coefficients up again.
+function updateAccessoryPhysics(robotObj, jiggleY, popKick, dt) {
+    const k = 150, d = 11;
     robotObj.traverse(c => {
         if (c.name.startsWith('Acessory_')) {
             if (!c.userData.basePos) {
                 c.userData.basePos = c.position.clone();
                 c.userData.baseRot = c.rotation.clone();
+                c.userData.physZ = 0; c.userData.physVelZ = 0;
+                c.userData.physY = 0; c.userData.physVelY = 0;
             }
             if (c.name.includes('Ear')) {
-                const flop = jiggleY * 0.005 + popKick * 0.5;
                 const sign = c.name.includes('Right') ? -1 : 1;
-                c.rotation.z = c.userData.baseRot.z + flop * sign;
+                const target = (jiggleY * 0.05 + popKick * 1.4) * sign;
+                c.userData.physVelZ += (k * (target - c.userData.physZ) - d * c.userData.physVelZ) * dt;
+                c.userData.physZ += c.userData.physVelZ * dt;
+                c.rotation.z = c.userData.baseRot.z + c.userData.physZ;
             } else if (c.name.includes('Antenna')) {
-                const bend = jiggleY * 0.003 - Math.abs(popKick)*0.3;
-                c.rotation.x = c.userData.baseRot.x + bend;
-                c.rotation.z = c.userData.baseRot.z + popKick * 1.2;
+                const target = jiggleY * 0.03 - Math.abs(popKick) * 0.9;
+                c.userData.physVelZ += (k * (target - c.userData.physZ) - d * c.userData.physVelZ) * dt;
+                c.userData.physZ += c.userData.physVelZ * dt;
+                c.rotation.x = c.userData.baseRot.x + c.userData.physZ;
+                c.rotation.z = c.userData.baseRot.z + popKick * 1.4;
             } else if (c.name.includes('Witchhat')) {
-                const bounce = Math.max(0, -jiggleY * 0.1);
-                c.position.y = c.userData.basePos.y + bounce;
-                c.rotation.z = c.userData.baseRot.z + popKick * 0.5;
+                const target = Math.max(0, -jiggleY * 0.8);
+                c.userData.physVelY += (k * (target - c.userData.physY) - d * c.userData.physVelY) * dt;
+                c.userData.physY += c.userData.physVelY * dt;
+                c.position.y = c.userData.basePos.y + c.userData.physY;
+                c.rotation.z = c.userData.baseRot.z + popKick * 0.7;
             } else if (c.name.includes('Glasses')) {
-                const lagY = jiggleY * 0.05;
-                c.position.y = c.userData.basePos.y - lagY;
-                c.position.z = c.userData.basePos.z + Math.abs(lagY)*0.5;
+                const target = -jiggleY * 0.3;
+                c.userData.physVelY += (k * (target - c.userData.physY) - d * c.userData.physVelY) * dt;
+                c.userData.physY += c.userData.physVelY * dt;
+                c.position.y = c.userData.basePos.y + c.userData.physY;
+                c.position.z = c.userData.basePos.z + Math.abs(c.userData.physY) * 0.5;
             }
         }
     });
@@ -341,8 +375,18 @@ function createExtraBots() {
         if (mats.blue) mats.blue.color.setHex(look.blue);
         if (mats.sides) mats.sides.color.setHex(look.sides);
 
-        const fc = new FaceController();
-        const emotions = ['joy', 'sadness', 'anger', 'glitch', 'heart', 'neutral'];
+        // 256 instead of the main bot's full 1024 — these five render small
+        // in the lineup, so a much smaller physical canvas is visually
+        // indistinguishable but a huge win for the expensive shadowBlur
+        // work in drawFace() (cost scales with canvas area: (256/1024)^2 ≈
+        // 1/16th). See FaceController's constructor comment for the full
+        // story — this single line is what actually fixes the ~10fps
+        // multi-bot-section stutter.
+        const fc = new FaceController(256);
+        // Real app Studio eye-style preset names (see EYE_STYLE_BOOST/SHAPES
+        // above) — the lineup now showcases the exact same presets a user
+        // can actually pick, not a separate lookalike set.
+        const emotions = ['Happy', 'Tired', 'Angry', 'Glitch', 'Heart', 'Normal'];
         fc.currentEmotion = emotions[i % emotions.length];
         clone.userData.faceController = fc;
         
@@ -382,8 +426,32 @@ function updateExtraBots(dt, active, centerX, centerY) {
         // scrolling past the section, which is exactly what showed up as
         // "the animation is wrong" in a screenshot taken mid-scroll.
         const k = active ? 220 : 500, d = active ? 14 : 45;
-        bot.userData.scaleVel += (k * (target - bot.userData.scaleVal) - d * bot.userData.scaleVel) * dt;
-        bot.userData.scaleVal += bot.userData.scaleVel * dt;
+        // Real bug, found by tracing a "huge frozen bot" screenshot: explicit
+        // Euler integration of a spring is only stable while d*step < 2. The
+        // exit spring's d=45 needs step < ~0.044s, but dt can be as large as
+        // the render loop's own 0.05s clamp after any frame hitch (GC pause,
+        // scroll jank, a heavy script tick) — one such frame sent scaleVal
+        // oscillating to wildly negative values (observed: -2.379). Since the
+        // visible=false early-return below fires before scale.setScalar()
+        // runs, the bot's *actual* THREE.js scale stayed frozen at whatever
+        // garbage value the spring last computed mid-oscillation — so next
+        // time this same bot fades in, it flashes at the wrong size for a
+        // frame, and if `active` flips again mid-oscillation it can stay
+        // visible at a huge scale — this is the real cause of the "ghost/
+        // giant frozen bots" report. Sub-stepping keeps the integration
+        // stable regardless of how large dt gets.
+        let remaining = dt;
+        while (remaining > 1e-6) {
+            const step = Math.min(0.008, remaining);
+            bot.userData.scaleVel += (k * (target - bot.userData.scaleVal) - d * bot.userData.scaleVel) * step;
+            bot.userData.scaleVal += bot.userData.scaleVel * step;
+            remaining -= step;
+        }
+        // Belt-and-suspenders clamp: this spring should never legitimately
+        // leave [0, ~1.3] even with the bouncy entrance overshoot, so a hard
+        // clamp costs nothing and guarantees no future bug in this function
+        // can again freeze a bot at an absurd scale.
+        bot.userData.scaleVal = Math.max(-0.05, Math.min(1.3, bot.userData.scaleVal));
         const s = Math.max(0, bot.userData.scaleVal);
         if (s < 0.01 && !active) { bot.visible = false; return; }
         bot.visible = true;
@@ -404,7 +472,7 @@ function updateExtraBots(dt, active, centerX, centerY) {
         bot.position.y = centerY + Math.sin(now * motion.bobFreq + bot.userData.phase) * motion.bobAmp;
         bot.rotation.y = Math.sin(now * motion.turnFreq + bot.userData.phase) * motion.turnAmp;
         bot.rotation.z = bot.userData.popKick || 0;
-        updateAccessoryPhysics(bot, 0, bot.userData.popKick || 0);
+        updateAccessoryPhysics(bot, 0, bot.userData.popKick || 0, dt);
     });
 }
 
@@ -413,10 +481,108 @@ function updateExtraBots(dt, active, centerX, centerY) {
 // (blink + a slow wandering gaze) instead of one static drawn-once frame,
 // which read as "dead" with no motion at all in the face.
 // ------------------------------------------------------------------
+// Real bug fix (kept from the original comment below): drawFace used to
+// call an undefined getEmotionParams, throwing on the very first frame and
+// permanently killing the whole rAF loop. Beyond just fixing the crash,
+// this eye system was also its own separate skew/curve approximation that
+// had visibly drifted from what the real desktop app actually renders —
+// "the eyes are different [from the app], make it represent what's really
+// there". Replaced with the app's actual 8-point SHAPES outlines (src/
+// index.html) rendered through the same Catmull-Rom curve, named after the
+// app's real Studio eye-style presets so the website's emotion-cycling
+// showcases the exact same looks a user can pick, not a lookalike.
+const SHAPES = {
+    Normal: [ [0,-1], [0.8,-0.8], [1,0], [0.8,0.8], [0,1], [-0.8,0.8], [-1,0], [-0.8,-0.8] ],
+    Blink:  [ [0,-0.1], [0.8,-0.05], [1,0], [0.8,0.05], [0,0.1], [-0.8,0.05], [-1,0], [-0.8,-0.05] ],
+    Happy:  [ [0,-0.8], [0.9,-0.6], [1,-0.2], [0.8,0.2], [0,0.1], [-0.8,0.2], [-1,-0.2], [-0.9,-0.6] ],
+    Angry:  [ [0,-0.3], [0.9,-0.8], [1,0], [0.8,0.8], [0,1], [-0.8,0.8], [-1,0], [-0.5,-0.1] ],
+    Bored:  [ [0,-0.2], [0.8,-0.2], [1,0.2], [0.8,0.6], [0,0.8], [-0.8,0.6], [-1,0.2], [-0.8,-0.2] ],
+    Tired:  [ [0,-0.1], [0.8,-0.1], [1,0.3], [0.8,0.8], [0,0.9], [-0.8,0.8], [-1,0.3], [-0.8,-0.1] ],
+    Heart:  [ [0,-0.4], [0.6,-0.8], [1,-0.2], [0.5,0.4], [0,1], [-0.5,0.4], [-1,-0.2], [-0.6,-0.8] ],
+    Glitch: [ [0,-1], [0.8,-0.8], [1,0], [0.8,0.8], [0,1], [-0.8,0.8], [-1,0], [-0.8,-0.8] ],
+    Surprised: [ [0,-1], [0.85,-0.85], [1,0], [0.85,0.85], [0,1], [-0.85,0.85], [-1,0], [-0.85,-0.85] ]
+};
+// Matches the app's EXPR boost values — an overall eye-size nudge per
+// style, layered on top of the shape itself (e.g. Heart/Surprised read as
+// a touch bigger, Tired a touch smaller).
+const EYE_STYLE_BOOST = { Normal: 0, Happy: 0, Angry: -0.02, Bored: -0.03, Tired: -0.06, Heart: 0.1, Glitch: 0, Surprised: 0.16 };
+
+// Same Catmull-Rom-to-Bezier closed-loop fill as the app's drawEyeShape,
+// plus the app's own clipped glitch-band treatment for the Glitch style.
+function drawEyeShapePoly(ctx, cx, cy, radius, points, colorCss, now, idx, isGlitch, seed) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.beginPath();
+    const n = points.length;
+    const tension = 0.5;
+    const disp = [];
+    for (let i = 0; i < n; i++) {
+        // Kept in sync with index.html's drawEyeShape — same "durchdreht"
+        // report applies here (this is what shows on the website's own
+        // demo bots), same fix: slower + smaller.
+        const wobbleX = Math.sin(now * 0.002 + i + idx + seed) * 0.009;
+        const wobbleY = Math.cos(now * 0.0013 + i + idx + seed) * 0.009;
+        disp.push([points[i][0] + wobbleX, points[i][1] + wobbleY]);
+    }
+    for (let i = 0; i < n; i++) {
+        const p0 = disp[(i - 1 + n) % n];
+        const p1 = disp[i];
+        const p2 = disp[(i + 1) % n];
+        const p3 = disp[(i + 2) % n];
+        const cp1x = p1[0] + (p2[0] - p0[0]) * tension / 3;
+        const cp1y = p1[1] + (p2[1] - p0[1]) * tension / 3;
+        const cp2x = p2[0] - (p3[0] - p1[0]) * tension / 3;
+        const cp2y = p2[1] - (p3[1] - p1[1]) * tension / 3;
+        if (i === 0) ctx.moveTo(p1[0] * radius, p1[1] * radius);
+        ctx.bezierCurveTo(cp1x * radius, cp1y * radius, cp2x * radius, cp2y * radius, p2[0] * radius, p2[1] * radius);
+    }
+    ctx.closePath();
+    ctx.fillStyle = colorCss;
+    ctx.shadowColor = colorCss;
+    ctx.shadowBlur = isGlitch ? 0 : 55;
+    ctx.fill();
+    if (isGlitch) {
+        ctx.clip();
+        const bands = 5;
+        // Still reported as constant twitching even fully deterministic —
+        // kept in sync with index.html's same fix: slower ticks (220ms) and
+        // most ticks show nothing at all, so bands only burst in on roughly
+        // 1 in 4 ticks instead of every single one.
+        const glitchTick = Math.floor(now / 220);
+        const gatePseudo = Math.sin(glitchTick * 91.345) * 47453.5453;
+        const gateFrac = gatePseudo - Math.floor(gatePseudo);
+        if (gateFrac < 0.25) {
+            for (let i = 0; i < bands; i++) {
+                const bY = -radius + (i / bands) * (radius * 2);
+                const bH = (radius * 2) / bands;
+                const pseudo = Math.sin(glitchTick * 12.9898 + i * 78.233) * 43758.5453;
+                const shiftFrac = (pseudo - Math.floor(pseudo)) - 0.5;
+                const shiftX = shiftFrac * 0.08 * radius;
+                ctx.fillStyle = i % 2 === 0 ? colorCss : '#ff0055';
+                ctx.fillRect(-radius + shiftX, bY, radius * 2, bH);
+            }
+        }
+    }
+    ctx.restore();
+}
+
 class FaceController {
-    constructor() {
+    // Real perf bug, confirmed by measurement: average frame time jumped
+    // from ~22ms (single bot on screen) to ~104ms (~10fps) the moment the
+    // multi-bot lineup put 5 of these on screen at once — every FaceController
+    // instance ran a full 1024x1024 canvas 2D redraw *with shadowBlur*
+    // (canvas shadow blur is genuinely expensive, roughly proportional to
+    // canvas area) every single frame, regardless of how large it actually
+    // renders on screen. The four extra-bot lineup faces render tiny on
+    // screen — same drawFace()/drawStatPage() pixel math (all still tuned
+    // for a 1024-unit space) now runs through one ctx.scale() onto a much
+    // smaller *physical* canvas for them, so the actual pixel work (and the
+    // shadowBlur cost) shrinks along with it. Main bot keeps full 1024 (the
+    // hero element, worth the cost).
+    constructor(size = 1024) {
+        this.canvasSize = size;
         this.faceCanvas = document.createElement('canvas');
-        this.faceCanvas.width = this.faceCanvas.height = 1024;
+        this.faceCanvas.width = this.faceCanvas.height = size;
         this.faceCtx = this.faceCanvas.getContext('2d');
         this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
         this.faceTex.encoding = THREE.sRGBEncoding;
@@ -430,8 +596,16 @@ class FaceController {
         this.gazeTargetX = 0;
         this.gazeTargetY = 0;
         this.nextGazeAt = now + 500 + Math.random() * 2000;
+        // Real bug: the eye-outline liquid wobble (drawEyeShapePoly) only
+        // ever depended on the shared performance.now() plus the eye's own
+        // index (0/1 for left/right) — nothing per *bot* — so every bot's
+        // eyes wobbled in exact lockstep, which read as "all animations are
+        // synchronized" despite blink/gaze/bob/turn already being properly
+        // randomized per instance. One random seed per FaceController,
+        // folded into that phase, desyncs it the same way.
+        this.wobbleSeed = Math.random() * 1000;
 
-        this.currentEmotion = 'neutral';
+        this.currentEmotion = 'Normal';
 
         this.displayPageIndex = 0;
         this.displayPageTimer = 0;
@@ -443,81 +617,41 @@ class FaceController {
 
     drawFace(lidCoverage, offsetX, offsetY, scaleX = 1, scaleY = 1) {
         const ctx = this.faceCtx;
+        // All the pixel math below is tuned for a 1024-unit space — scale
+        // once so it still lands correctly on a physically smaller canvas
+        // (see the constructor's `size` param) instead of overflowing it.
+        ctx.save();
+        ctx.scale(this.canvasSize / 1024, this.canvasSize / 1024);
         ctx.fillStyle = '#04140a';
         ctx.fillRect(0, 0, 1024, 1024);
 
-        const baseW = 210, baseH = 210;
-        const eyeW = baseW * Math.max(0.3, scaleX);
-        
-        const ep = getEmotionParams(this.currentEmotion);
-        const effScaleY = scaleY * ep.scaleY;
-        const eyeH = Math.max(10, baseH * Math.max(0.05, effScaleY) * (1 - lidCoverage));
-        const eyeY = 512 - eyeH / 2;
-        
-        const glow = 55 + effScaleY * 30 + eyeW * 0.05;
+        const baseRadius = 105; // matches the old baseW/2=210/2
+        const boost = EYE_STYLE_BOOST[this.currentEmotion] !== undefined ? EYE_STYLE_BOOST[this.currentEmotion] : 0;
+        const radius = baseRadius * (1 + boost) * Math.max(0.3, scaleX) * Math.max(0.3, scaleY);
+        const eyeW = radius * 2, eyeH = radius * 2; // kept for the highlight/pupil sizing below
+
+        // Blend toward the Blink shape for a real closing-eyelid outline
+        // instead of the old flat height-squash — exactly how the app
+        // itself blinks (see its blinkPhase point-blending).
+        const baseShape = SHAPES[this.currentEmotion] || SHAPES.Normal;
+        const shapePoints = baseShape.map((p, i) => {
+            const blinkP = SHAPES.Blink[i];
+            return [ p[0] + (blinkP[0] - p[0]) * lidCoverage, p[1] + (blinkP[1] - p[1]) * lidCoverage ];
+        });
+        const isGlitch = this.currentEmotion === 'Glitch';
+        const isHeart = this.currentEmotion === 'Heart';
 
         const now = performance.now();
-        
-        [364.5, 659.5].forEach((cx, idx) => {
-            const isRight = idx === 1;
-            const ex = cx - eyeW / 2 + offsetX;
-            const ey = eyeY + offsetY;
-            
-            ctx.save();
-            ctx.shadowColor = 'rgba(25,242,255,0.9)';
-            ctx.shadowBlur = glow;
-            ctx.fillStyle = '#19f2ff';
-            
-            if (ep.isGlitch) {
-                ctx.shadowBlur = 0;
-                const bands = 5;
-                for(let i=0; i<bands; i++) {
-                    const bY = ey + (i/bands)*eyeH;
-                    const bH = eyeH/bands;
-                    const shiftX = (Math.random()-0.5)*20;
-                    ctx.fillStyle = i%2===0 ? '#19f2ff' : '#ff0055';
-                    ctx.beginPath();
-                    ctx.roundRect(ex + shiftX, bY, eyeW, bH, 10);
-                    ctx.fill();
-                }
-            } else if (ep.isHeart) {
-                const centerX = cx + offsetX;
-                const centerY = 512 + offsetY;
-                const hw = eyeW*0.6, hh = eyeH*0.6;
-                ctx.beginPath();
-                const topY = centerY - hh*0.5;
-                ctx.moveTo(centerX, topY);
-                ctx.bezierCurveTo(centerX, topY - hh*0.5, centerX - hw, topY - hh*0.5, centerX - hw, topY);
-                ctx.bezierCurveTo(centerX - hw, topY + hh*0.5, centerX, topY + hh*0.8, centerX, centerY + hh*0.8);
-                ctx.bezierCurveTo(centerX, topY + hh*0.8, centerX + hw, topY + hh*0.5, centerX + hw, topY);
-                ctx.bezierCurveTo(centerX + hw, topY - hh*0.5, centerX, topY - hh*0.5, centerX, topY);
-                ctx.fill();
-            } else {
-                ctx.beginPath();
-                const wobbleX = Math.sin(now * 0.003 + idx) * 8;
-                const wobbleY = Math.cos(now * 0.002 + idx) * 8;
-                
-                const rx = eyeW / 2;
-                const ry = eyeH / 2;
-                const skew = (isRight ? -ep.skewX : ep.skewX) * rx;
-                const centerX = cx + offsetX;
-                const centerY = 512 + offsetY;
-                
-                const pTL = { x: centerX - rx + skew + wobbleX, y: centerY - ry + ep.curveTop*ry + wobbleY };
-                const pTR = { x: centerX + rx + skew + wobbleX, y: centerY - ry + ep.curveTop*ry + wobbleY };
-                const pBR = { x: centerX + rx - skew + wobbleX, y: centerY + ry + ep.curveBottom*ry + wobbleY };
-                const pBL = { x: centerX - rx - skew + wobbleX, y: centerY + ry + ep.curveBottom*ry + wobbleY };
-                
-                ctx.moveTo(centerX - rx + wobbleX, centerY + wobbleY);
-                ctx.quadraticCurveTo(pTL.x, pTL.y, centerX + wobbleX, centerY - ry + ep.curveTop*ry + wobbleY);
-                ctx.quadraticCurveTo(pTR.x, pTR.y, centerX + rx + wobbleX, centerY + wobbleY);
-                ctx.quadraticCurveTo(pBR.x, pBR.y, centerX + wobbleX, centerY + ry + ep.curveBottom*ry + wobbleY);
-                ctx.quadraticCurveTo(pBL.x, pBL.y, centerX - rx + wobbleX, centerY + wobbleY);
-                ctx.fill();
-            }
-            ctx.restore();
 
-            if (scaleY > 1.0 && eyeH > 60 && !ep.isGlitch && !ep.isHeart) {
+        [364.5, 659.5].forEach((cx, idx) => {
+            const centerX = cx + offsetX;
+            const centerY = 512 + offsetY;
+            const ex = centerX - eyeW / 2;
+            const ey = centerY - eyeH / 2;
+
+            drawEyeShapePoly(ctx, centerX, centerY, radius, shapePoints, '#19f2ff', now, idx, isGlitch, this.wobbleSeed);
+
+            if (scaleY > 1.0 && eyeH > 60 && !isGlitch && !isHeart) {
                 const hlW = eyeW * 0.22, hlH = eyeH * 0.28;
                 ctx.save();
                 ctx.globalAlpha = Math.min(0.85, (scaleY - 1.0) * 4.5);
@@ -530,7 +664,7 @@ class FaceController {
                 ctx.restore();
             }
 
-            if (eyeH > 40 && !ep.isGlitch && !ep.isHeart) {
+            if (eyeH > 40 && !isGlitch && !isHeart) {
                 const pupilW = eyeW * 0.55, pupilH = eyeH * 0.55;
                 ctx.save();
                 ctx.globalAlpha = 0.25;
@@ -538,17 +672,20 @@ class FaceController {
                 ctx.beginPath();
                 const px = cx - pupilW / 2 + offsetX;
                 const py = ey + (eyeH - pupilH) / 2;
-                const wobbleX = Math.sin(now * 0.003 + idx) * 8;
-                const wobbleY = Math.cos(now * 0.002 + idx) * 8;
+                const wobbleX = Math.sin(now * 0.003 + idx + this.wobbleSeed) * 8;
+                const wobbleY = Math.cos(now * 0.002 + idx + this.wobbleSeed) * 8;
                 ctx.roundRect(px + wobbleX*0.5, py + wobbleY*0.5, pupilW, pupilH, Math.min(pupilW, pupilH) * 0.45);
                 ctx.fill();
                 ctx.restore();
             }
         });
+        ctx.restore(); // matches the ctx.scale() save() at the top of this method
     }
 
     drawStatPage(label, value, color) {
         const ctx = this.faceCtx;
+        ctx.save();
+        ctx.scale(this.canvasSize / 1024, this.canvasSize / 1024);
         ctx.fillStyle = '#04140a';
         ctx.fillRect(0, 0, 1024, 1024);
         ctx.textAlign = 'center';
@@ -572,6 +709,7 @@ class FaceController {
             ctx.fillStyle = i < filled ? color : 'rgba(255,255,255,0.1)';
             ctx.fillRect(bx + i * (segW + gap), by, segW, barH);
         }
+        ctx.restore(); // matches the ctx.scale() save() at the top of this method
     }
 
     update(now, dt, statsActive, scaleX = 1, scaleY = 1) {
@@ -756,13 +894,21 @@ function init() {
                         color: 0x0e0e10, roughness: 0.92, metalness: 0.05
                     });
                 } else if (name === 'wheelbot_face') {
+                    // Real bug, reported again even after the previous softening
+                    // pass — kept in sync with the app/Studio's identical fix:
+                    // any nonzero clearcoat/gloss still produces a real specular
+                    // highlight that slides across a curved surface as it turns.
+                    // A display's glow is entirely the emissiveMap — drop
+                    // metalness/clearcoat to true zero and roughness to fully
+                    // rough, removing the mirror response outright.
                     nm = new THREE.MeshPhysicalMaterial({
                         map: mainFaceController.faceTex, emissiveMap: mainFaceController.faceTex,
                         emissive: 0xffffff, emissiveIntensity: 1.4,
-                        color: 0xffffff, roughness: 0.15, metalness: 0.6,
-                        clearcoat: 0.7, clearcoatRoughness: 0.08
+                        color: 0xffffff, roughness: 1.0, metalness: 0,
+                        clearcoat: 0, clearcoatRoughness: 0
                     });
                     nm.name = 'wheelbot_face'; // kept identifiable post-clone(); see getBodyMats
+                    mainFaceMat = nm;
                 } else if (name.includes('body_blue')) {
                     nm = new THREE.MeshPhysicalMaterial({
                         color: 0x2a4fd6, normalMap: normalMap, metalnessMap: metalnessMap,
@@ -848,38 +994,101 @@ let mouseX = 0, mouseY = 0;
 const curCam = { pos: new THREE.Vector3(0, 60, 430), look: new THREE.Vector3(0, 40, 0) };
 let curRobotX = 0, curRobotY = KEYFRAMES[0].robotY, curRotY = 0;
 
-function getSectionProgress() {
+// Real perf bug, reported as "ruckelt ganz schön doll": getSectionProgress()
+// runs every single animate() frame (60x/sec) and used to re-query
+// document.getElementById() for all 7 sections AND call
+// getBoundingClientRect() up to 10 times per call — each of those forces a
+// synchronous layout reflow if anything on the page has changed since the
+// last layout (which is constantly true here: the scroll-progress bar width,
+// the ambient-glow custom property, and the WebGL canvas itself all write to
+// the DOM/repaint every frame). That's a textbook layout-thrashing pattern.
+// Sections don't move relative to the *document* — only which part of them
+// the viewport is currently looking at changes — so their absolute
+// document-space centers only need computing once (cached here) instead of
+// every frame; per-frame progress becomes pure arithmetic against
+// window.scrollY (which is free, no reflow) with zero DOM reads at all.
+let sectionCenters = [];
+// Same layout-thrashing problem as getBoundingClientRect() above:
+// document.body.scrollHeight also forces a synchronous reflow, and the old
+// code read it fresh every single frame just to compute the scroll-progress
+// bar's width. Total page height barely ever changes mid-session — cached
+// alongside the section centers, refreshed on the same resize/load events.
+let cachedMaxScroll = 1;
+function cacheSectionCenters() {
     const sections = SECTION_IDS.map(id => document.getElementById(id)).filter(Boolean);
-    if (sections.length === 0) return 0;
-    
-    // We map progress=N to the exact moment the CENTER of section N hits the CENTER of the screen.
-    // This perfectly aligns the 3D bot's keyframes with the user's reading focus.
-    const scrollCenter = window.scrollY + window.innerHeight * 0.5;
-    
-    // Handle edge case: if we are above the center of the first section, pin to 0.
-    const firstRect = sections[0].getBoundingClientRect();
-    const firstCenter = firstRect.top + firstRect.height / 2 + window.scrollY;
-    if (scrollCenter <= firstCenter) return 0;
-    
+    // Real bug, reported as "OptiBot always ends up past the text field":
+    // this cached each section's CENTER, and getSectionProgress mapped
+    // progress=N to the moment section N's center hit the viewport's
+    // center. For an 85vh section that means scrolling roughly another
+    // half-section further than where the section's *text* actually
+    // reveals (the reveal IntersectionObserver fires at threshold 0.01 —
+    // essentially the instant any sliver of the section is visible). The
+    // camera/bot — and the FaceController's active-section display page —
+    // stayed on the *previous* section's framing for that whole gap, which
+    // is exactly what let a "Federleicht" screenshot still show the stats
+    // section's readout bleeding through behind the text. Caching each
+    // section's TOP instead, with getSectionProgress mapping progress=N to
+    // "section N's top reaches the viewport's top" (the same anchor this
+    // project used successfully before it got changed to center-based),
+    // tracks scroll position closely enough to match when text is actually
+    // visible instead of trailing behind it.
+    // How far "into" the viewport (from the top, as a fraction of viewport
+    // height) a section's own top needs to scroll before the camera starts
+    // treating it as the active section. Measured the actual gap this was
+    // meant to close: the text-reveal observer fires the instant any sliver
+    // of a section is visible (effectively when its top touches the
+    // *bottom* of the viewport), but the camera used to wait until a full
+    // viewport height later — the bot kept showing the previous section's
+    // framing (and, for section-stats, its stat-page display) well after
+    // that section's own text had already fully faded in. 0.8 starts the
+    // camera responding once a section has scrolled 80% of the way up the
+    // viewport (i.e. it's just begun appearing in the bottom ~20%) — close
+    // enough behind the text reveal to not visibly lag, without snapping
+    // the camera to a section that isn't substantially on screen yet.
+    //
+    // Real bug from the first version of this fix: applying that shift to
+    // every section INCLUDING the hero (index 0) broke the page's resting
+    // state — hero is already fully visible at scrollY=0 by definition (no
+    // "scrolling up from below" for it to lag behind), so shifting its
+    // threshold made progress jump to ~0.8 before the user had scrolled at
+    // all, overlapping the hero text with the *next* section's framing.
+    // Only sections 1+ get the early-trigger shift; section 0's threshold
+    // stays exactly at 0 so scrollY=0 always maps to progress=0.
+    sectionCenters = sections.map((el, i) => {
+        const rect = el.getBoundingClientRect();
+        const top = rect.top + window.scrollY;
+        return i === 0 ? top : top - window.innerHeight * SECTION_TRIGGER_FRACTION;
+    });
+    cachedMaxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
+}
+const SECTION_TRIGGER_FRACTION = 0.45;
+cacheSectionCenters();
+window.addEventListener('resize', cacheSectionCenters);
+// Late-loading fonts/images can still reflow the page after first paint —
+// one more free (rare, one-off) re-cache once everything has truly settled.
+window.addEventListener('load', cacheSectionCenters);
+
+function getSectionProgress() {
+    if (sectionCenters.length === 0) return 0;
+
+    const scrollTop = window.scrollY;
+
+    // Handle edge case: if we are above the top of the first section, pin to 0.
+    if (scrollTop <= sectionCenters[0]) return 0;
+
     let idx = 0;
-    for (let i = 0; i < sections.length; i++) {
-        const rect = sections[i].getBoundingClientRect();
-        const center = rect.top + rect.height / 2 + window.scrollY;
-        if (scrollCenter >= center) idx = i;
+    for (let i = 0; i < sectionCenters.length; i++) {
+        if (scrollTop >= sectionCenters[i]) idx = i;
     }
-    
-    const cur = sections[idx];
-    const next = sections[idx + 1];
-    if (!next) return idx;
-    
-    const curRect = cur.getBoundingClientRect();
-    const nextRect = next.getBoundingClientRect();
-    const curCenter = curRect.top + curRect.height / 2 + window.scrollY;
-    const nextCenter = nextRect.top + nextRect.height / 2 + window.scrollY;
-    
-    const span = Math.max(1, nextCenter - curCenter);
-    const frac = Math.max(0, Math.min(1, (scrollCenter - curCenter) / span));
-    
+
+    if (idx + 1 >= sectionCenters.length) return idx;
+
+    const curTop = sectionCenters[idx];
+    const nextTop = sectionCenters[idx + 1];
+
+    const span = Math.max(1, nextTop - curTop);
+    const frac = Math.max(0, Math.min(1, (scrollTop - curTop) / span));
+
     return idx + frac;
 }
 
@@ -1042,7 +1251,11 @@ function animate() {
     // permanently collide with whichever paragraph happens to scroll past,
     // fade it out once you leave the hero (where there's real open space
     // above/below the copy) and back in near the download CTA (same deal).
-    if (mobile) {
+    // (`mobile` isn't a variable in scope here — this is a real
+    // ReferenceError that fires every frame and kills the whole render
+    // loop permanently after the first frame. Matches the <900px threshold
+    // getResponsiveKeyframe() above already uses.)
+    if (window.innerWidth < 900) {
         // Only the hero has real open space around the text on a stacked
         // mobile layout; everywhere else, fade down to a faint background
         // presence rather than colliding with whichever paragraph is
@@ -1091,19 +1304,29 @@ function animate() {
         // section — reported feedback ("mehr Emotion und Umschauen").
         const lookAround = Math.sin(Date.now() * 0.00042) * 0.16 + Math.sin(Date.now() * 0.0011 + 2.1) * 0.06;
         const nod = Math.sin(Date.now() * 0.00065 + 1.7) * 0.05;
+        // At the very top (hero) and bottom (download) the bot sits small
+        // and should read as dead-center, facing straight at the camera —
+        // both those keyframes already script rotY=0, but the idle wobble
+        // and mouse-parallax terms below were added unconditionally on top
+        // regardless of section, so the bot still visibly turned away from
+        // center even at rest there. Fades those two additions out over the
+        // last ~0.6 progress-units approaching either end, full-strength
+        // everywhere else the bot is actively posed mid-page.
+        const KEYFRAME_MAX = KEYFRAMES.length - 1;
+        const bookendFactor = Math.max(0, Math.min(1, progress / 0.6, (KEYFRAME_MAX - progress) / 0.6));
         robot.position.x = curRobotX + jiggleX;
         // Idle breathing bob PLUS jiggle offset — the head trails scroll
         // and then overshoots back, layered on top of the constant breathe.
         robot.position.y = curRobotY + Math.sin(Date.now() * 0.0018) * 4 + jiggleY;
-        robot.rotation.y = curRotY + mouseX * 0.15 + lookAround;
+        robot.rotation.y = curRotY + (mouseX * 0.15 + lookAround) * bookendFactor;
         // Tilt forward slightly when scrolling down (head tips forward as if
         // leaning into the scroll), backward on scroll up — feels physical.
-        robot.rotation.x = mouseY * 0.06 + nod + jiggleY * 0.0025;
+        robot.rotation.x = (mouseY * 0.06 + nod) * bookendFactor + jiggleY * 0.0025;
 
         updateAccessoryPop(delta);
         robot.scale.setScalar(baseRobotScale * popScale);
         robot.rotation.z = popKick;
-        updateAccessoryPhysics(robot, jiggleY, popKick);
+        updateAccessoryPhysics(robot, jiggleY, popKick, delta);
 
         // Live color/accessory cycle while the "Dein Bot, dein Stil" section
         // is in view — a little squash-and-kick "pop" (see triggerAccessoryPop)
@@ -1123,10 +1346,20 @@ function animate() {
                 applyAccessoryLook(look);
                 triggerAccessoryPop();
             }
-            bodyBaseMat.color.lerp(targetColor.body, 0.07);
-            bodyBlueMat.color.lerp(targetColor.blue, 0.07);
-            if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.07);
-            lerpMaterialTo(bodyMats, targetMaterialName, 0.08);
+            // Sped up from 0.07 — at that rate the color took nearly half of
+            // STYLE_LOOK_HOLD just to visually converge, so the cycle read as
+            // "always transitioning, never arriving" even after the hold
+            // time itself was shortened.
+            bodyBaseMat.color.lerp(targetColor.body, 0.16);
+            bodyBlueMat.color.lerp(targetColor.blue, 0.16);
+            if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.16);
+            lerpMaterialTo(bodyMats, targetMaterialName, 0.16);
+            // Eyes previously stayed a fixed cyan no matter which body
+            // color the cycle landed on — tint the face glow's emissive to
+            // match the current look's own accent color instead, so the
+            // "individual" identity a look conveys through body color
+            // carries through to the eyes too.
+            if (mainFaceMat) mainFaceMat.emissive.lerp(targetColor.blue, 0.16);
         } else if (bodyBaseMat && bodyBlueMat) {
             // Outside the customization section, ease back to the default
             // look (and reset the cycle) so later sections ("Federleicht",
@@ -1143,6 +1376,7 @@ function animate() {
             bodyBlueMat.color.lerp(targetColor.blue, 0.03);
             if (bodySidesMat) bodySidesMat.color.lerp(targetColor.sides, 0.03);
             lerpMaterialTo(bodyMats, targetMaterialName, 0.03);
+            if (mainFaceMat) mainFaceMat.emissive.lerp(targetColor.blue, 0.03);
             applyAccessoryLook(def);
         }
 
@@ -1169,8 +1403,7 @@ function animate() {
     }
 
     if (elScrollProgress) {
-        const maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
-        const pct = Math.max(0, Math.min(1, window.scrollY / maxScroll)) * 100;
+        const pct = Math.max(0, Math.min(1, window.scrollY / cachedMaxScroll)) * 100;
         elScrollProgress.style.width = pct + '%';
     }
     if (elScrollHint) {
@@ -1229,8 +1462,7 @@ function startFallbackMode() {
     function fallbackTick() {
         requestAnimationFrame(fallbackTick);
         if (elScrollProgress) {
-            const maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
-            const pct = Math.max(0, Math.min(1, window.scrollY / maxScroll)) * 100;
+            const pct = Math.max(0, Math.min(1, window.scrollY / cachedMaxScroll)) * 100;
             elScrollProgress.style.width = pct + '%';
         }
     }
