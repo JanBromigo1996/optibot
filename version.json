@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "notes": [
+    "Neues Studio-Design im Sci-Fi-HUD-Look — schärfere Formen, mehr wie ein echtes Spielmenü.",
+    "Die Farben im Studio stimmen jetzt mit dem echten Desktop-Bot überein (vorher teils verblasst).",
+    "5 neue Elementar-Materialien: Rostig, Wasser, Feuer, Erde, Luft — mit echten, teils animierten Texturen.",
+    "OptiBot prüft ab jetzt automatisch (und optional) auf neue Versionen."
+  ]
+}
