@@ -517,8 +517,11 @@ function drawEyeShapePoly(ctx, cx, cy, radius, points, colorCss, now, idx, isGli
     const tension = 0.5;
     const disp = [];
     for (let i = 0; i < n; i++) {
-        const wobbleX = Math.sin(now * 0.003 + i + idx + seed) * 0.015;
-        const wobbleY = Math.cos(now * 0.002 + i + idx + seed) * 0.015;
+        // Kept in sync with index.html's drawEyeShape — same "durchdreht"
+        // report applies here (this is what shows on the website's own
+        // demo bots), same fix: slower + smaller.
+        const wobbleX = Math.sin(now * 0.002 + i + idx + seed) * 0.009;
+        const wobbleY = Math.cos(now * 0.0013 + i + idx + seed) * 0.009;
         disp.push([points[i][0] + wobbleX, points[i][1] + wobbleY]);
     }
     for (let i = 0; i < n; i++) {
@@ -541,21 +544,23 @@ function drawEyeShapePoly(ctx, cx, cy, radius, points, colorCss, now, idx, isGli
     if (isGlitch) {
         ctx.clip();
         const bands = 5;
-        // Reported as too strong and running too long — this re-rolled
-        // Math.random() every single frame, so a Glitch-styled bot strobed
-        // continuously and hard for as long as it stayed on screen. Held
-        // shift per ~140ms tick (deterministic hash instead of Math.random,
-        // so it doesn't need any extra state) plus a smaller amplitude reads
-        // as an occasional brief flicker instead of nonstop chaos.
-        const glitchTick = Math.floor(now / 140);
-        for (let i = 0; i < bands; i++) {
-            const bY = -radius + (i / bands) * (radius * 2);
-            const bH = (radius * 2) / bands;
-            const pseudo = Math.sin(glitchTick * 12.9898 + i * 78.233) * 43758.5453;
-            const shiftFrac = (pseudo - Math.floor(pseudo)) - 0.5;
-            const shiftX = shiftFrac * 0.08 * radius;
-            ctx.fillStyle = i % 2 === 0 ? colorCss : '#ff0055';
-            ctx.fillRect(-radius + shiftX, bY, radius * 2, bH);
+        // Still reported as constant twitching even fully deterministic —
+        // kept in sync with index.html's same fix: slower ticks (220ms) and
+        // most ticks show nothing at all, so bands only burst in on roughly
+        // 1 in 4 ticks instead of every single one.
+        const glitchTick = Math.floor(now / 220);
+        const gatePseudo = Math.sin(glitchTick * 91.345) * 47453.5453;
+        const gateFrac = gatePseudo - Math.floor(gatePseudo);
+        if (gateFrac < 0.25) {
+            for (let i = 0; i < bands; i++) {
+                const bY = -radius + (i / bands) * (radius * 2);
+                const bH = (radius * 2) / bands;
+                const pseudo = Math.sin(glitchTick * 12.9898 + i * 78.233) * 43758.5453;
+                const shiftFrac = (pseudo - Math.floor(pseudo)) - 0.5;
+                const shiftX = shiftFrac * 0.08 * radius;
+                ctx.fillStyle = i % 2 === 0 ? colorCss : '#ff0055';
+                ctx.fillRect(-radius + shiftX, bY, radius * 2, bH);
+            }
         }
     }
     ctx.restore();

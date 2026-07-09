@@ -1,9 +1,11 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "notes": [
-    "Neues Studio-Design im Sci-Fi-HUD-Look — schärfere Formen, mehr wie ein echtes Spielmenü.",
-    "Die Farben im Studio stimmen jetzt mit dem echten Desktop-Bot überein (vorher teils verblasst).",
-    "5 neue Elementar-Materialien: Rostig, Wasser, Feuer, Erde, Luft — mit echten, teils animierten Texturen.",
-    "OptiBot prüft ab jetzt automatisch (und optional) auf neue Versionen."
+    "Ein Update jetzt zu installieren, öffnet nicht mehr versehentlich den Setup-Assistenten erneut.",
+    "Nach Updates suchen geht jetzt auch direkt im Studio (unter Bot & Engine).",
+    "Man kann jeden Bot entfernen, nicht mehr nur den zuletzt hinzugefügten.",
+    "Materialien und Elementar-Effekte sind jetzt getrennt: ein Chrome-Rad kann z. B. zusätzlich rostig oder in Flammen sein.",
+    "Feuer, Wasser, Rost, Erde und Luft sehen jetzt deutlich realistischer aus.",
+    "Augen und Glitch-Effekt wirken ruhiger, nicht mehr so hektisch."
   ]
 }
