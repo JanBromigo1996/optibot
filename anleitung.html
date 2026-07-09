@@ -201,6 +201,90 @@
         .mode-chip.work { background: rgba(255,168,0,0.12); color: #ffc561; }
         .mode-chip.auto { background: rgba(25,242,255,0.12); color: #6be3ea; }
 
+        /* Thin reading-progress bar — a small, quiet piece of "this page
+           responds to you" polish that doesn't compete with the content. */
+        .scroll-progress {
+            position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+            background: linear-gradient(90deg, #6ea8ff, #ff6fb0, #ffc561);
+            z-index: 200; transition: width 0.1s linear;
+        }
+
+        .icon-chip { transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1); }
+        .doc-card:hover .icon-chip { transform: rotate(-6deg) scale(1.08); }
+
+        /* ---------- "Die Geschichte von OptiBot" — a small, warm origin
+           story ahead of the technical sections, told as a scrollytelling
+           timeline: a sticky reactive mini-face on the left morphs its
+           expression as each beat scrolls past on the right. The eyes are
+           deliberately shape/size-morphing rounded blobs (not just a color
+           swap) — the closest a flat CSS widget gets to how the real
+           product's eyes actually deform between expressions, without
+           duplicating that app's canvas/Catmull-Rom code for a one-off
+           marketing widget. ---------- */
+        /* Real bug: this is a bare <section>, and the base stylesheet hides
+           every <section> at opacity:0 until script.js's scroll-observer
+           reveals it — the same trap the .doc section override below
+           already exists to avoid, just missed here since this section
+           sits outside .doc. Without this, the entire story block rendered
+           fully invisible (confirmed via computed styles: opacity:0,
+           otherwise correctly laid out) despite every child element being
+           individually visible/opaque. */
+        .story-section { padding: 10px 6% 26px; opacity: 1; transform: none; }
+        .story-intro { max-width: 640px; margin: 0 auto 44px; text-align: center; }
+        .story-intro .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 3px; color: #ff9fc7; text-transform: uppercase; }
+        .story-intro h2 { font-size: clamp(26px, 3.6vw, 38px); font-weight: 800; letter-spacing: -0.5px; margin-top: 10px; }
+        .story-intro p { color: #b8b8bd; margin-top: 10px; line-height: 1.6; }
+
+        .story-grid { max-width: 860px; margin: 0 auto; display: grid; grid-template-columns: 200px 1fr; gap: 44px; align-items: start; }
+        .story-face-col { position: sticky; top: 100px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        .mini-face {
+            width: 176px; height: 148px; border-radius: 50px 50px 42px 42px;
+            background: radial-gradient(120% 100% at 50% 0%, #1c2430, #05070a);
+            border: 2px solid rgba(255,255,255,0.09);
+            box-shadow: 0 24px 50px -20px rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.45);
+            display: flex; align-items: center; justify-content: center; gap: 18px;
+        }
+        .mini-eye {
+            width: 42px; height: 50px; border-radius: 42% 42% 46% 46% / 52% 52% 56% 56%;
+            background: radial-gradient(circle at 35% 30%, #eafeff, #19f2ff 55%, #0c7c86 100%);
+            box-shadow: 0 0 18px 2px rgba(25,242,255,0.5);
+            transition: all 0.55s cubic-bezier(0.34, 1.4, 0.4, 1);
+        }
+        .story-face-label { font-size: 12.5px; color: #8a8a90; letter-spacing: 0.5px; min-height: 16px; transition: opacity 0.3s; }
+
+        .mini-face.curious .mini-eye { height: 58px; transform: translateY(-3px) scale(1.06); }
+        .mini-face.heart .mini-eye {
+            background: radial-gradient(circle at 35% 30%, #ffe3ef, #ff6fb0 55%, #b23a72 100%);
+            box-shadow: 0 0 18px 2px rgba(255,111,176,0.55); transform: scale(1.04);
+        }
+        .mini-face.focused .mini-eye { height: 24px; border-radius: 50% / 65%; }
+        .mini-face.happy .mini-eye {
+            height: 54px; transform: scale(1.05) translateY(-2px);
+            background: radial-gradient(circle at 35% 30%, #eafeff, #6be3ea 55%, #157b82 100%);
+        }
+
+        .story-beats { min-width: 0; }
+        .story-beat {
+            padding: 6px 0 30px 28px; border-left: 2px solid rgba(255,255,255,0.09); position: relative;
+            opacity: 0.35; transition: opacity 0.5s ease;
+        }
+        .story-beat.active { opacity: 1; }
+        .story-beat:last-child { border-left-color: transparent; padding-bottom: 4px; }
+        .story-beat::before {
+            content: ''; position: absolute; left: -7px; top: 4px; width: 12px; height: 12px; border-radius: 50%;
+            background: rgba(255,255,255,0.15); box-shadow: 0 0 0 4px rgba(255,255,255,0.05);
+            transition: background 0.4s, box-shadow 0.4s;
+        }
+        .story-beat.active::before { background: #ff6fb0; box-shadow: 0 0 0 4px rgba(255,111,176,0.18), 0 0 14px rgba(255,111,176,0.5); }
+        .story-eyebrow { font-size: 12px; color: #6ea8ff; letter-spacing: 2px; font-weight: 700; }
+        .story-beat h3 { font-size: 21px; font-weight: 700; margin: 6px 0 8px; letter-spacing: -0.3px; }
+        .story-beat p { color: #b8b8bd; line-height: 1.65; font-size: 15.5px; }
+
+        @media (max-width: 720px) {
+            .story-grid { grid-template-columns: 1fr; }
+            .story-face-col { position: static; flex-direction: row; justify-content: center; margin-bottom: 10px; }
+        }
+
         /* Right-edge section wayfinding — an Apple-product-page-style dot
            rail, hidden on narrow screens where there's no room to spare. */
         .doc-nav {
@@ -246,7 +330,10 @@
         </div>
     </header>
 
+    <div class="scroll-progress" id="scrollProgress"></div>
+
     <div class="doc-nav" aria-hidden="true">
+        <a href="#s-story" data-target="s-story"></a>
         <a href="#s-install" data-target="s-install"></a>
         <a href="#s-start" data-target="s-start"></a>
         <a href="#s-engine" data-target="s-engine"></a>
@@ -254,6 +341,50 @@
         <a href="#s-multi" data-target="s-multi"></a>
         <a href="#s-faq" data-target="s-faq"></a>
     </div>
+
+    <section class="story-section" id="s-story">
+        <div class="story-intro">
+            <div class="eyebrow">Bevor es losgeht</div>
+            <h2>Die Geschichte von OptiBot</h2>
+            <p>Scrolle runter — seine Augen erzählen mit.</p>
+        </div>
+        <div class="story-grid">
+            <div class="story-face-col">
+                <div class="mini-face normal" id="miniFace">
+                    <div class="mini-eye"></div>
+                    <div class="mini-eye"></div>
+                </div>
+                <div class="story-face-label" id="miniFaceLabel">&nbsp;</div>
+            </div>
+            <div class="story-beats">
+                <div class="story-beat" data-face="curious" data-label="Neugierig">
+                    <span class="story-eyebrow">01</span>
+                    <h3>Der Funke</h3>
+                    <p>Alles begann mit zu vielen offenen Tabs und einem Lüfter, der einfach nicht zur Ruhe kommen wollte. Irgendwo dazwischen entstand die Idee: Was, wenn dein PC einen kleinen Begleiter hätte, der sich einfach darum kümmert?</p>
+                </div>
+                <div class="story-beat" data-face="normal" data-label="Startklar">
+                    <span class="story-eyebrow">02</span>
+                    <h3>Die Geburt</h3>
+                    <p>Aus ein paar Zeilen Code, sehr viel Neugier und ein bisschen zu viel Kaffee wurde OptiBot geboren — klein, rund, mit leuchtenden Augen und sofort startklar.</p>
+                </div>
+                <div class="story-beat" data-face="heart" data-label="Verliebt">
+                    <span class="story-eyebrow">03</span>
+                    <h3>Das Lernen</h3>
+                    <p>Er lernte, sich zu freuen, wenn du ihn streichelst. Nachzudenken, während er für dich aufräumt. Und ganz ehrlich zu sein: müde auszusehen, wenn dein System es gerade auch ist.</p>
+                </div>
+                <div class="story-beat" data-face="focused" data-label="Konzentriert">
+                    <span class="story-eyebrow">04</span>
+                    <h3>Die Aufgabe</h3>
+                    <p>Seine Aufgabe war nie, laut zu sein. Er räumt leise im Hintergrund auf, schaltet Energieprofile um, wenn du sie brauchst — und stört dich dabei so wenig wie möglich.</p>
+                </div>
+                <div class="story-beat" data-face="happy" data-label="Glücklich">
+                    <span class="story-eyebrow">05</span>
+                    <h3>Heute</h3>
+                    <p>Heute trägt OptiBot deine Farben, dein Material, deinen Stil. Und wenn dir einer nicht reicht: Du kannst dir gleich mehrere zulegen — bis zu fünf, jeder mit seinem eigenen Charakter.</p>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <main class="doc">
         <section class="doc-card reveal" id="s-install">
@@ -364,6 +495,61 @@
             });
         }, { threshold: 0.5 });
         cards.forEach(c => navObserver.observe(c));
+
+        // Reading-progress bar: how far down the whole page you've scrolled.
+        const progressBar = document.getElementById('scrollProgress');
+        function updateScrollProgress() {
+            const doc = document.documentElement;
+            const max = doc.scrollHeight - doc.clientHeight;
+            progressBar.style.width = (max > 0 ? (doc.scrollTop / max) * 100 : 0) + '%';
+        }
+        window.addEventListener('scroll', updateScrollProgress, { passive: true });
+        updateScrollProgress();
+
+        // Story timeline: the sticky mini-face's expression follows whichever
+        // beat is currently most centered in view — same IntersectionObserver
+        // idea as the nav dots above, just driving a CSS class instead of a
+        // link. rootMargin pulls the trigger band toward the vertical middle
+        // of the viewport so the face changes right as a beat becomes the
+        // one you're actually reading, not the instant it appears at the
+        // bottom edge.
+        const storyBeats = Array.from(document.querySelectorAll('.story-beat'));
+        const miniFace = document.getElementById('miniFace');
+        const miniFaceLabel = document.getElementById('miniFaceLabel');
+        // Real bug caught by testing: an IntersectionObserver-driven version
+        // of this (toggling an "active" Set as beats cross a trigger band)
+        // went wrong right at the first/last beat — near the very top or
+        // bottom of the page the browser can't scroll far enough to center
+        // that beat at all, so it never actually entered the trigger band
+        // and the face silently kept showing whichever beat *was* centered
+        // instead. Plain geometry avoids the edge case entirely: on every
+        // scroll tick, just measure every beat's actual on-screen distance
+        // from the viewport's vertical center and pick the true minimum —
+        // no "did this cross a threshold" state to ever get stale.
+        let storyTicking = false;
+        function updateStoryFace() {
+            storyTicking = false;
+            const viewportCenter = window.innerHeight / 2;
+            let closest = null, closestDist = Infinity;
+            storyBeats.forEach(el => {
+                const r = el.getBoundingClientRect();
+                const dist = Math.abs((r.top + r.height / 2) - viewportCenter);
+                if (dist < closestDist) { closestDist = dist; closest = el; }
+            });
+            if (!closest) return;
+            const visible = closestDist < window.innerHeight * 0.85; // don't react while the story section is far offscreen
+            storyBeats.forEach(el => el.classList.toggle('active', el === closest && visible));
+            if (visible) {
+                miniFace.className = 'mini-face ' + closest.dataset.face;
+                miniFaceLabel.textContent = closest.dataset.label || '';
+            }
+        }
+        window.addEventListener('scroll', () => {
+            if (storyTicking) return;
+            storyTicking = true;
+            requestAnimationFrame(updateStoryFace);
+        }, { passive: true });
+        updateStoryFace();
     </script>
 </body>
 </html>
