@@ -1,16 +1,12 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "notes": [
-    "Die Farbe vom Rad lässt sich jetzt unabhängig vom restlichen Körper anpassen.",
-    "Effekte wie Feuer oder Rost lassen sich jetzt auf einen Rutsch auf den ganzen Bot anwenden, statt nur Teil für Teil.",
-    "Rost sieht jetzt aus wie echte Korrosion, Feuer glimmt gleichmäßig statt zu flackern.",
-    "Das Lighting-Preset „Studio“ ist überarbeitet und nicht mehr zu hell.",
-    "Die Augenfarbe im Studio stimmt jetzt beim ersten Öffnen sofort mit dem echten Desktop-Bot überein.",
-    "Ein durchgehendes Augen-Zittern beim Drehen des Bots ist behoben.",
-    "Speichern passiert jetzt immer automatisch — den Speichern-Button gibt es nicht mehr, einfach das Fenster normal schließen.",
-    "Der Update-Knopf im Studio sitzt jetzt dezent oben rechts statt als große Schaltfläche.",
-    "OptiBot hüpft, balanciert oder schaut sich ab und zu von selbst um, wenn er länger nichts zu tun hat.",
-    "Die Lösch-Bestätigung für einen Bot sieht jetzt überall wie der Rest der App aus, nicht mehr wie ein Windows-Popup.",
-    "Das Studio hat ein spürbar cineastischeres Erscheinungsbild bekommen (Hangar-Hintergrund, rotierender Sockelring, Scanlines)."
+    "Studio hat jetzt eine echte linke Kategorie-Leiste statt Reitern oben im Panel — näher am ursprünglichen Konzept.",
+    "Oberfläche und Effekt sind jetzt anklickbare Kacheln mit Vorschau-Symbol statt einer einfachen Auswahlliste.",
+    "Ein Bug behoben, durch den gespeicherte Materialien/Effekte pro Teil beim Öffnen von Studio manchmal nicht geladen wurden.",
+    "Die Augen zittern nicht mehr, wenn OptiBot sich von selbst umschaut oder balanciert.",
+    "Ein Bug behoben, durch den die neuen Idle-Animationen (Hüpfen, Umschauen, Dösen) praktisch nie ausgelöst wurden.",
+    "\"Nach Updates suchen\" zeigt sein Ergebnis jetzt zuverlässig direkt vor dem Studio-Fenster an.",
+    "Neues Desktop-Icon."
   ]
 }
