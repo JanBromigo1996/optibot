@@ -1,7 +1,8 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.5",
   "notes": [
     "Wichtiger Bugfix: Rad und Körperseiten hatten oft keine echte Oberflächentextur mehr, sondern nur eine flache Farbe — jetzt wieder korrekt.",
+    "Studio hat jetzt echte 3D-Service-Arme im Hintergrund, näher am ursprünglichen Konzept.",
     "Neues Desktop-Icon."
   ]
 }
