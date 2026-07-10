@@ -1,12 +1,7 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.4",
   "notes": [
-    "Studio hat jetzt eine echte linke Kategorie-Leiste statt Reitern oben im Panel — näher am ursprünglichen Konzept.",
-    "Oberfläche und Effekt sind jetzt anklickbare Kacheln mit Vorschau-Symbol statt einer einfachen Auswahlliste.",
-    "Ein Bug behoben, durch den gespeicherte Materialien/Effekte pro Teil beim Öffnen von Studio manchmal nicht geladen wurden.",
-    "Die Augen zittern nicht mehr, wenn OptiBot sich von selbst umschaut oder balanciert.",
-    "Ein Bug behoben, durch den die neuen Idle-Animationen (Hüpfen, Umschauen, Dösen) praktisch nie ausgelöst wurden.",
-    "\"Nach Updates suchen\" zeigt sein Ergebnis jetzt zuverlässig direkt vor dem Studio-Fenster an.",
+    "Wichtiger Bugfix: Rad und Körperseiten hatten oft keine echte Oberflächentextur mehr, sondern nur eine flache Farbe — jetzt wieder korrekt.",
     "Neues Desktop-Icon."
   ]
 }
