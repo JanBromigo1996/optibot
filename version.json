@@ -1,8 +1,9 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.6",
   "notes": [
+    "Das Studio hat jetzt eine echte 3D-Werkstatt statt eines flachen Hintergrunds: modellierte Service-Arme, Werkzeugregal, Kisten und Kabel.",
+    "Das Lighting-Preset „Cinematic“ wurde neu abgestimmt (kühleres Cyan, wärmere Akzente).",
     "Wichtiger Bugfix: Rad und Körperseiten hatten oft keine echte Oberflächentextur mehr, sondern nur eine flache Farbe — jetzt wieder korrekt.",
-    "Studio hat jetzt echte 3D-Service-Arme im Hintergrund, näher am ursprünglichen Konzept.",
     "Neues Desktop-Icon."
   ]
 }
